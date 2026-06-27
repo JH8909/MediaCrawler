@@ -568,17 +568,22 @@ function bindEvents() {
     button.addEventListener("click", () => {
       document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
-      const map = {
-        overview: ".kpis",
-        tasks: ".task-panel",
-        logs: ".log-panel",
-        data: "#dataSection",
-        config: "#configSection",
-      webhook: "#webhookSection",
-        llm: "#llmSection",
-      };
-      const target = document.querySelector(map[button.dataset.section] || ".kpis");
-      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+
+      const section = button.dataset.section;
+      const isSecondary = ["data", "config", "webhook", "llm"].includes(section);
+
+      // Toggle main content vs secondary pages
+      document.querySelectorAll(".crawler-panel, .log-panel").forEach(el => {
+        el.style.display = isSecondary ? "none" : "";
+      });
+      document.querySelectorAll(".page-panel").forEach(p => p.style.display = "none");
+
+      if (isSecondary) {
+        let pageId = "page-" + section;
+        if (section === "webhook" || section === "llm") pageId = "page-settings";
+        const page = document.getElementById(pageId);
+        if (page) page.style.display = "block";
+      }
     });
   });
   // Auto-track active nav section on scroll

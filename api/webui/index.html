@@ -26,15 +26,13 @@
           <span class="local-dot"></span>
           <span>本地模式</span>
           <small>版本 1.4.2</small>
+          <small style="color:#888;margin-top:2px;">127.0.0.1 本机</small>
         </div>
       </aside>
 
       <main class="workspace">
         <header class="topbar">
-          <div class="title-row">
-            <h1>MediaCrawler 控制台</h1>
-            <span class="local-pill">127.0.0.1 本机</span>
-          </div>
+  
           <div class="checks" id="envChecks">
             <span>环境检查：</span>
             <span class="check pending">Python 检查中</span>
@@ -127,7 +125,102 @@
           </aside>
         </section>
 
-        <section class="panel crawler-panel" id="crawlerSection">
+        <!-- ===== 二级页面（点击导航后显示） ===== -->        <div id="page-data" class="page-panel" style="display:none;">        <section class="panel data-panel" id="dataSection">
+          <div class="panel-head">
+            <h2>需求库 / 导出文件</h2>
+            <div class="actions">
+              <span class="status-pill" id="dataStatsText">文件：0</span>
+              <button id="refreshDataBtn">刷新文件</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>文件</th>
+                  <th>类型</th>
+                  <th>记录数</th>
+                  <th>大小</th>
+                  <th>更新时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="dataFileRows">
+                <tr><td colspan="6" class="empty">正在读取导出文件...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <pre class="command-box preview-box" id="dataPreviewBox">选择一个 JSONL/CSV/SQLite 文件后，可预览或同步到飞书需求库。</pre>
+        </section>
+
+        </div>        <div id="page-config" class="page-panel" style="display:none;">        <section class="panel config-panel" id="configSection">
+          <div class="panel-head">
+            <h2>配置检查</h2>
+            <button id="refreshConfigBtn">重新检查</button>
+          </div>
+          <div class="config-grid" id="configGrid"></div>
+        </section>
+  
+        </div>        <div id="page-settings" class="page-panel" style="display:none;">        <section class="panel config-panel" id="webhookSection">
+          <div class="panel-head">
+            <h2>飞书 Webhook 通知</h2>
+            <div class="actions">
+              <span id="webhookStatus">状态：未配置</span>
+              <button id="saveWebhookBtn">保存</button>
+              <button id="testWebhookBtn">测试连接</button>
+            </div>
+          </div>
+          <div class="config-grid" id="webhookGrid">
+            <div class="config-item" style="grid-column: 1/-1;">
+              <span>Webhook URL（飞书群机器人）</span>
+              <input id="webhookUrlInput" type="url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
+            </div>
+            <div class="config-item" style="grid-column: 1/-1;background:var(--blue-soft);">
+              <span>使用方法</span>
+              <div style="margin-top:6px;font-size:13px;line-height:1.8;">
+                1. 打开飞书群 → 设置 → 群机器人 → 添加自定义机器人<br/>
+                2. 复制 Webhook URL 粘贴到上方输入框，点击保存<br/>
+                3. 点"测试连接"确认可用<br/>
+                4. 采集完成后自动推送结果到群
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel config-panel" id="llmSection">
+          <div class="panel-head">
+            <h2>LLM AI 模型配置</h2>
+            <div class="actions">
+              <span id="llmStatus">状态：未配置</span>
+              <button id="saveLlmBtn">保存</button>
+              <button id="testLlmBtn">测试连接</button>
+            </div>
+          </div>
+          <div class="config-grid" id="llmGrid">
+            <div class="config-item" style="grid-column: 1/-1;">
+              <span>API Key</span>
+              <input id="llmApiKeyInput" type="password" placeholder="输入 API Key（保存后不回显）" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
+            </div>
+            <div class="config-item" style="grid-column: 1/-1;">
+              <span>API URL</span>
+              <input id="llmApiUrlInput" type="url" placeholder="https://api.deepseek.com/v1/chat/completions" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
+            </div>
+            <div class="config-item" style="grid-column: 1/-1;">
+              <span>模型名称</span>
+              <input id="llmModelInput" type="text" placeholder="deepseek-v4-flash" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
+            </div>
+            <div class="config-item" style="grid-column: 1/-1;background:var(--blue-soft);">
+              <span>说明</span>
+              <div style="margin-top:6px;font-size:13px;line-height:1.8;">
+                配置 AI 痛点分析用的模型 API，支持任何 OpenAI 兼容接口。<br/>
+                API Key 保存后不会明文回显，只显示前4位和后4位。<br/>
+                如果不配置，AI 方案生成会使用预设模板代替。
+              </div>
+            </div>
+          </div>
+        </section>
+
+        </div>        <section class="panel crawler-panel" id="crawlerSection">
           <div class="panel-head">
             <h2>本机直接采集</h2>
             <div class="actions">
@@ -216,102 +309,7 @@
           <div class="terminal" id="logBox"></div>
         </section>
 
-        <section class="panel data-panel" id="dataSection">
-          <div class="panel-head">
-            <h2>需求库 / 导出文件</h2>
-            <div class="actions">
-              <span class="status-pill" id="dataStatsText">文件：0</span>
-              <button id="refreshDataBtn">刷新文件</button>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>文件</th>
-                  <th>类型</th>
-                  <th>记录数</th>
-                  <th>大小</th>
-                  <th>更新时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody id="dataFileRows">
-                <tr><td colspan="6" class="empty">正在读取导出文件...</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <pre class="command-box preview-box" id="dataPreviewBox">选择一个 JSONL/CSV/SQLite 文件后，可预览或同步到飞书需求库。</pre>
-        </section>
-
-        <section class="panel config-panel" id="configSection">
-          <div class="panel-head">
-            <h2>配置检查</h2>
-            <button id="refreshConfigBtn">重新检查</button>
-          </div>
-          <div class="config-grid" id="configGrid"></div>
-        </section>
-  
-        <section class="panel config-panel" id="webhookSection">
-          <div class="panel-head">
-            <h2>飞书 Webhook 通知</h2>
-            <div class="actions">
-              <span id="webhookStatus">状态：未配置</span>
-              <button id="saveWebhookBtn">保存</button>
-              <button id="testWebhookBtn">测试连接</button>
-            </div>
-          </div>
-          <div class="config-grid" id="webhookGrid">
-            <div class="config-item" style="grid-column: 1/-1;">
-              <span>Webhook URL（飞书群机器人）</span>
-              <input id="webhookUrlInput" type="url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
-            </div>
-            <div class="config-item" style="grid-column: 1/-1;background:var(--blue-soft);">
-              <span>使用方法</span>
-              <div style="margin-top:6px;font-size:13px;line-height:1.8;">
-                1. 打开飞书群 → 设置 → 群机器人 → 添加自定义机器人<br/>
-                2. 复制 Webhook URL 粘贴到上方输入框，点击保存<br/>
-                3. 点"测试连接"确认可用<br/>
-                4. 采集完成后自动推送结果到群
-              </div>
-            </div>
-          </div>
-        </section>
-
         <!-- ===== LLM AI 模型配置 ===== -->
-        <section class="panel config-panel" id="llmSection">
-          <div class="panel-head">
-            <h2>LLM AI 模型配置</h2>
-            <div class="actions">
-              <span id="llmStatus">状态：未配置</span>
-              <button id="saveLlmBtn">保存</button>
-              <button id="testLlmBtn">测试连接</button>
-            </div>
-          </div>
-          <div class="config-grid" id="llmGrid">
-            <div class="config-item" style="grid-column: 1/-1;">
-              <span>API Key</span>
-              <input id="llmApiKeyInput" type="password" placeholder="输入 API Key（保存后不回显）" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
-            </div>
-            <div class="config-item" style="grid-column: 1/-1;">
-              <span>API URL</span>
-              <input id="llmApiUrlInput" type="url" placeholder="https://api.deepseek.com/v1/chat/completions" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
-            </div>
-            <div class="config-item" style="grid-column: 1/-1;">
-              <span>模型名称</span>
-              <input id="llmModelInput" type="text" placeholder="deepseek-v4-flash" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
-            </div>
-            <div class="config-item" style="grid-column: 1/-1;background:var(--blue-soft);">
-              <span>说明</span>
-              <div style="margin-top:6px;font-size:13px;line-height:1.8;">
-                配置 AI 痛点分析用的模型 API，支持任何 OpenAI 兼容接口。<br/>
-                API Key 保存后不会明文回显，只显示前4位和后4位。<br/>
-                如果不配置，AI 方案生成会使用预设模板代替。
-              </div>
-            </div>
-          </div>
-        </section>
-
     </main>
     </div>
 
