@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MediaCrawler 控制台</title>
+    <link rel="stylesheet" href="/static/dashboard.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">MC</div>
+          <strong>MediaCrawler</strong>
+        </div>
+        <nav class="nav">
+          <button class="nav-item active" data-section="overview">总览</button>
+          <button class="nav-item" data-section="tasks">采集任务</button>
+          <button class="nav-item" data-section="logs">运行日志</button>
+          <button class="nav-item" data-section="data">需求库</button>
+          <button class="nav-item" data-section="config">配置检查</button>
+          <button class="nav-item" data-section="webhook">Webhook</button>
+            <button class="nav-item" data-section="llm">AI 模型</button>
+        </nav>
+        <div class="sidebar-footer">
+          <span class="local-dot"></span>
+          <span>本地模式</span>
+          <small>版本 1.4.2</small>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div class="title-row">
+            <h1>MediaCrawler 控制台</h1>
+            <span class="local-pill">127.0.0.1 本机</span>
+          </div>
+          <div class="checks" id="envChecks">
+            <span>环境检查：</span>
+            <span class="check pending">Python 检查中</span>
+            <span class="check pending">Bitable 检查中</span>
+            <span class="check pending">网络连接 检查中</span>
+          </div>
+          <div class="clock" id="clock">--</div>
+        </header>
+
+        <section class="kpis" id="kpiSection">
+          <article class="metric">
+            <div class="metric-icon blue">待</div>
+            <div><span>待执行</span><strong id="countPending">0</strong></div>
+          </article>
+          <article class="metric">
+            <div class="metric-icon green">启</div>
+            <div><span>运行中</span><strong id="countRunning">0</strong></div>
+          </article>
+          <article class="metric">
+            <div class="metric-icon blue">成</div>
+            <div><span>已完成</span><strong id="countDone">0</strong></div>
+          </article>
+          <article class="metric">
+            <div class="metric-icon red">失</div>
+            <div><span>失败</span><strong id="countFailed">0</strong></div>
+          </article>
+        </section>
+
+        <section class="quick-actions" id="quickActions">
+          <div>
+            <strong>今日操作</strong>
+            <span>先 Dry-Run，再正式采集/同步；高风险动作会二次确认。</span>
+          </div>
+          <div class="actions">
+            <button id="quickRefreshBtn">刷新全部</button>
+            <button id="quickNewTaskBtn">新建任务</button>
+            <button id="quickDryRunBtn">Dry-Run 当前任务</button>
+            <button id="quickCrawlerBtn">本机采集</button>
+            <button id="quickDataBtn">查看需求库</button>
+          </div>
+        </section>
+
+        <section class="content-grid">
+          <section class="panel task-panel">
+            <div class="panel-head">
+              <h2>采集任务列表 <span id="taskTotal">（共 0 条）</span></h2>
+              <div class="actions">
+                <button id="refreshBtn">刷新</button>
+                <button id="newTaskBtn">新建任务</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>平台</th>
+                    <th>采集类型</th>
+                    <th>关键词</th>
+                    <th>最大数量</th>
+                    <th>状态</th>
+                    <th>最近运行</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="taskRows">
+                  <tr><td colspan="7" class="empty">正在读取飞书任务表...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <aside class="panel detail-panel">
+            <div class="panel-head">
+              <h2>任务详情</h2>
+              <span class="status-pill" id="selectedTaskStatus">未选择</span>
+            </div>
+            <dl class="details" id="taskDetails"></dl>
+            <div class="task-actions">
+              <button id="editTaskBtn">编辑</button>
+              <button id="dryRunBtn">Dry-Run</button>
+              <button id="stopRunnerBtn" class="danger">停止任务</button>
+              <button id="startBtn" class="primary">启动选中任务</button>
+            </div>
+            <div class="command-head">
+              <strong>安全命令预览</strong>
+              <button id="copyCommandBtn">复制</button>
+            </div>
+            <pre class="command-box" id="commandBox">请选择一条飞书采集任务。</pre>
+            <p class="safe-note">命令预览不会包含 Cookie、token 或个人账号；正式运行会采集公开内容并同步到飞书需求库。</p>
+          </aside>
+        </section>
+
+        <section class="panel crawler-panel" id="crawlerSection">
+          <div class="panel-head">
+            <h2>本机直接采集</h2>
+            <div class="actions">
+              <span class="status-pill" id="crawlerStatusText">状态：读取中</span>
+              <button id="refreshCrawlerBtn">刷新状态</button>
+              <button id="stopCrawlerBtn">停止采集</button>
+              <button id="startCrawlerBtn" class="primary">启动采集</button>
+            </div>
+          </div>
+          <form class="control-form" id="crawlerForm">
+            <label>平台
+              <select name="platform">
+                <option value="xhs">小红书</option>
+                <option value="dy">抖音</option>
+                <option value="ks">快手</option>
+                <option value="bili">Bilibili</option>
+                <option value="wb">微博</option>
+                <option value="tieba">贴吧</option>
+                <option value="zhihu">知乎</option>
+              </select>
+            </label>
+            <label>采集类型
+              <select name="crawler_type" id="crawlerType">
+                <option value="search">关键词</option>
+                <option value="detail">指定ID</option>
+                <option value="creator">创作者</option>
+              </select>
+            </label>
+            <label>登录方式
+              <select name="login_type">
+                <option value="qrcode">二维码 / 无需登录</option>
+                <option value="phone">手机号</option>
+                <option value="cookie">Cookie（不在页面输入）</option>
+              </select>
+            </label>
+            <label class="mode-field" data-mode="search">关键词
+              <input name="keywords" placeholder="search 模式使用，多个关键词用英文逗号分隔" />
+            </label>
+            <label class="mode-field" data-mode="detail">指定ID
+              <input name="specified_ids" placeholder="detail 模式使用，多个 ID 用英文逗号分隔" />
+            </label>
+            <label class="mode-field" data-mode="creator">创作者ID
+              <input name="creator_ids" placeholder="creator 模式使用，多个 ID 用英文逗号分隔" />
+            </label>
+            <label>保存格式
+              <select name="save_option">
+                <option value="jsonl">JSONL</option>
+                <option value="csv">CSV</option>
+                <option value="sqlite">SQLite</option>
+                <option value="json">JSON</option>
+                <option value="excel">Excel</option>
+              </select>
+            </label>
+            <label>起始页
+              <input name="start_page" type="number" min="1" value="1" />
+            </label>
+            <label>最大内容数
+              <input name="max_notes_count" type="number" min="1" max="10000" value="50" />
+            </label>
+            <label>单条最大评论数
+              <input name="max_comments_count" type="number" min="1" max="10000" placeholder="可选" />
+            </label>
+            <label class="checkline"><input name="enable_comments" type="checkbox" checked /> 采集一级评论</label>
+            <label class="checkline"><input name="enable_sub_comments" type="checkbox" /> 采集二级评论</label>
+            <label class="checkline"><input name="headless" type="checkbox" /> 无头浏览器</label>
+            <label class="checkline confirm-line"><input name="confirm_public" type="checkbox" /> 我确认仅采集公开内容并遵守平台规则</label>
+          </form>
+          <div class="inline-note">页面不会保存 Cookie 或账号信息。正式采集前建议先用飞书任务 Dry-Run 检查命令。</div>
+          <pre class="command-box preview-box" id="crawlerPayloadPreview">等待填写采集参数。</pre>
+        </section>
+
+        <section class="panel log-panel">
+          <div class="panel-head">
+            <h2>运行日志（实时）</h2>
+            <div class="actions">
+              <label><input type="checkbox" id="autoScroll" checked /> 自动滚动</label>
+              <label><input type="checkbox" id="errorsOnly" /> 仅错误</label>
+              <select id="logSource">
+                <option value="all">全部来源</option>
+                <option value="feishu">飞书任务</option>
+                <option value="crawler">本机采集</option>
+              </select>
+              <button id="clearLogsBtn">清空</button>
+            </div>
+          </div>
+          <div class="terminal" id="logBox"></div>
+        </section>
+
+        <section class="panel data-panel" id="dataSection">
+          <div class="panel-head">
+            <h2>需求库 / 导出文件</h2>
+            <div class="actions">
+              <span class="status-pill" id="dataStatsText">文件：0</span>
+              <button id="refreshDataBtn">刷新文件</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>文件</th>
+                  <th>类型</th>
+                  <th>记录数</th>
+                  <th>大小</th>
+                  <th>更新时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="dataFileRows">
+                <tr><td colspan="6" class="empty">正在读取导出文件...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <pre class="command-box preview-box" id="dataPreviewBox">选择一个 JSONL/CSV/SQLite 文件后，可预览或同步到飞书需求库。</pre>
+        </section>
+
+        <section class="panel config-panel" id="configSection">
+          <div class="panel-head">
+            <h2>配置检查</h2>
+            <button id="refreshConfigBtn">重新检查</button>
+          </div>
+          <div class="config-grid" id="configGrid"></div>
+        </section>
+  
+        <section class="panel config-panel" id="webhookSection">
+          <div class="panel-head">
+            <h2>飞书 Webhook 通知</h2>
+            <div class="actions">
+              <span id="webhookStatus">状态：未配置</span>
+              <button id="saveWebhookBtn">保存</button>
+              <button id="testWebhookBtn">测试连接</button>
+            </div>
+          </div>
+          <div class="config-grid" id="webhookGrid">
+            <div class="config-item" style="grid-column: 1/-1;">
+              <span>Webhook URL（飞书群机器人）</span>
+              <input id="webhookUrlInput" type="url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
+            </div>
+            <div class="config-item" style="grid-column: 1/-1;background:var(--blue-soft);">
+              <span>使用方法</span>
+              <div style="margin-top:6px;font-size:13px;line-height:1.8;">
+                1. 打开飞书群 → 设置 → 群机器人 → 添加自定义机器人<br/>
+                2. 复制 Webhook URL 粘贴到上方输入框，点击保存<br/>
+                3. 点"测试连接"确认可用<br/>
+                4. 采集完成后自动推送结果到群
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== LLM AI 模型配置 ===== -->
+        <section class="panel config-panel" id="llmSection">
+          <div class="panel-head">
+            <h2>LLM AI 模型配置</h2>
+            <div class="actions">
+              <span id="llmStatus">状态：未配置</span>
+              <button id="saveLlmBtn">保存</button>
+              <button id="testLlmBtn">测试连接</button>
+            </div>
+          </div>
+          <div class="config-grid" id="llmGrid">
+            <div class="config-item" style="grid-column: 1/-1;">
+              <span>API Key</span>
+              <input id="llmApiKeyInput" type="password" placeholder="输入 API Key（保存后不回显）" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
+            </div>
+            <div class="config-item" style="grid-column: 1/-1;">
+              <span>API URL</span>
+              <input id="llmApiUrlInput" type="url" placeholder="https://api.deepseek.com/v1/chat/completions" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
+            </div>
+            <div class="config-item" style="grid-column: 1/-1;">
+              <span>模型名称</span>
+              <input id="llmModelInput" type="text" placeholder="deepseek-v4-flash" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
+            </div>
+            <div class="config-item" style="grid-column: 1/-1;background:var(--blue-soft);">
+              <span>说明</span>
+              <div style="margin-top:6px;font-size:13px;line-height:1.8;">
+                配置 AI 痛点分析用的模型 API，支持任何 OpenAI 兼容接口。<br/>
+                API Key 保存后不会明文回显，只显示前4位和后4位。<br/>
+                如果不配置，AI 方案生成会使用预设模板代替。
+              </div>
+            </div>
+          </div>
+        </section>
+
+    </main>
+    </div>
+
+    <dialog id="taskDialog">
+      <form method="dialog" class="task-form" id="taskForm">
+        <div class="panel-head">
+          <h2 id="taskDialogTitle">新建飞书采集任务</h2>
+          <button id="closeTaskDialogBtn" type="button">关闭</button>
+        </div>
+        <input name="record_id" type="hidden" />
+        <label>平台
+          <select name="platform">
+            <option>微博</option>
+            <option>小红书</option>
+            <option>抖音</option>
+            <option>哔哩哔哩</option>
+            <option>知乎</option>
+            <option>贴吧</option>
+          </select>
+        </label>
+        <label>采集类型
+          <select name="crawler_type">
+            <option>关键词</option>
+            <option>详情</option>
+            <option>创作者</option>
+          </select>
+        </label>
+        <label>关键词
+          <input name="keywords" placeholder="例如：旅游 攻略 杭州" />
+        </label>
+        <label>指定ID
+          <input name="specified_id" placeholder="详情采集时填写" />
+        </label>
+        <label>创作者ID
+          <input name="creator_id" placeholder="创作者采集时填写" />
+        </label>
+        <label>最大数量
+          <input name="max_notes_count" type="number" value="50" min="1" max="10000" />
+        </label>
+        <label>登录方式
+          <select name="login_type">
+            <option>无需登录</option>
+            <option>二维码</option>
+            <option>cookie</option>
+          </select>
+        </label>
+        <label>状态
+          <select name="status">
+            <option>待执行</option>
+            <option>运行中</option>
+            <option>已完成</option>
+            <option>失败</option>
+          </select>
+        </label>
+        <label class="checkline"><input name="enable_comments" type="checkbox" checked /> 采集一级评论</label>
+        <label class="checkline"><input name="enable_sub_comments" type="checkbox" /> 采集二级评论</label>
+        <button class="primary wide" id="submitTaskBtn" type="submit">保存到飞书任务表</button>
+      </form>
+    </dialog>
+
+    <script src="/static/dashboard.js"></script>
+  </body>
+</html>
