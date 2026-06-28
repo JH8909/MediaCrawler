@@ -1451,3 +1451,274 @@ dialog::backdrop {
   .pipeline-config { grid-template-columns: 1fr; }
   .pipeline-actions { justify-content: flex-start; white-space: normal; }
 }
+
+/* ── 30. AI需求机会分析报告 v3 ──────────────────────────────────── */
+/* Namespaced with ar- prefix to avoid conflicts */
+
+.ar-section { margin-bottom: 18px; }
+.ar-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* KPI cards */
+.ar-cards {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+  gap: 14px;
+}
+.ar-metric {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 112px;
+}
+.ar-icon {
+  width: 46px; height: 46px;
+  border-radius: 13px;
+  display: grid; place-items: center;
+  font-size: 20px; font-weight: 900;
+  flex-shrink: 0;
+}
+.ar-icon-blue   { background: var(--blue-soft);  color: var(--blue); }
+.ar-icon-green  { background: var(--green-soft); color: var(--green); }
+.ar-icon-red    { background: var(--red-soft);   color: var(--red); }
+.ar-icon-purple { background: #f1ecff; color: #7c4dff; }
+.ar-icon-orange { background: #fff6df; color: #f5a524; }
+.ar-icon-green2 { background: var(--green-soft); color: var(--green); }
+
+.ar-label { color: var(--muted); font-size: 13px; font-weight: 800; }
+.ar-value { margin-top: 4px; font-size: 27px; font-weight: 900; letter-spacing: -.6px; color: var(--text); }
+.ar-note { color: #92a0b5; font-size: 12px; margin-top: 4px; }
+
+/* AI summary grid */
+.ar-ai-summary { display: grid; grid-template-columns: 1.4fr .9fr; gap: 14px; }
+.ar-section-title { display: flex; align-items: center; justify-content: space-between; margin: 0 0 12px; }
+.ar-section-title h2 { margin: 0; font-size: 16px; }
+.ar-hint { color: var(--muted); font-size: 12px; }
+.ar-summary-text {
+  line-height: 1.85; color: #2a3850;
+  background: linear-gradient(180deg, var(--surface), var(--surface-alt));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px; margin: 0;
+}
+.ar-tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.ar-tag {
+  border-radius: 999px; padding: 6px 10px;
+  background: #f3f6fb; color: #50617c;
+  font-weight: 800; font-size: 12px;
+}
+.ar-tag.ar-p0 { background: var(--red-soft); color: #c1362c; }
+.ar-tag.ar-p1 { background: #fff6df; color: #af6b00; }
+.ar-tag.ar-ai { background: var(--blue-soft); color: #245eff; }
+
+/* Mini list */
+.ar-mini-list { display: grid; gap: 10px; }
+.ar-mini-item {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 11px 12px;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  background: var(--surface);
+}
+.ar-rank {
+  min-width: 24px; height: 24px;
+  border-radius: 8px;
+  display: grid; place-items: center;
+  background: var(--blue-soft); color: var(--blue);
+  font-weight: 900; font-size: 12px;
+}
+.ar-mini-item b { display: block; margin-bottom: 4px; }
+.ar-mini-item p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+/* Charts */
+.ar-charts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.ar-chart-card { min-height: 270px; }
+.ar-bars { display: grid; gap: 12px; margin-top: 8px; }
+.ar-bar-row {
+  display: grid; grid-template-columns: 100px 1fr 42px; gap: 10px; align-items: center;
+}
+.ar-bar-name { color: #42526b; font-weight: 800; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ar-bar-track { height: 10px; background: #edf2fa; border-radius: 999px; overflow: hidden; }
+.ar-bar-fill { height: 100%; background: linear-gradient(90deg, var(--blue), #8ea9ff); border-radius: 999px; }
+.ar-bar-value { color: var(--muted); font-size: 12px; text-align: right; }
+
+/* Donut */
+.ar-donut-wrap { display: flex; align-items: center; gap: 18px; margin-top: 10px; }
+.ar-donut {
+  width: 128px; height: 128px; border-radius: 50%;
+  position: relative; flex: 0 0 auto;
+}
+.ar-donut::after {
+  content: "方案"; position: absolute; inset: 26px;
+  background: var(--surface); border-radius: 50%;
+  display: grid; place-items: center;
+  color: var(--muted); font-weight: 900;
+}
+.ar-legend { display: grid; gap: 8px; flex: 1; }
+.ar-legend-item {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; color: var(--muted); font-size: 12px;
+}
+.ar-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  display: inline-block; margin-right: 7px;
+}
+
+/* Quadrant */
+.ar-quad {
+  height: 172px; border: 1px dashed #cfd8e7; border-radius: 14px;
+  position: relative;
+  background:
+    linear-gradient(#eef2f7 1px, transparent 1px) 0 50% / 100% 1px no-repeat,
+    linear-gradient(90deg, #eef2f7 1px, transparent 1px) 50% 0 / 1px 100% no-repeat,
+    var(--surface);
+  margin-top: 8px;
+}
+.ar-quad-label {
+  position: absolute; right: 10px; top: 8px;
+  color: var(--green); font-size: 12px; font-weight: 900;
+  background: var(--green-soft); padding: 4px 8px; border-radius: 999px;
+}
+.ar-bubble {
+  position: absolute; width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(59, 114, 255, .85); border: 3px solid #fff;
+  box-shadow: 0 4px 10px rgba(59, 114, 255, .28);
+}
+
+/* Opportunity cards */
+.ar-opportunity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(240px, 1fr));
+  gap: 14px;
+}
+.ar-opp-card {
+  border: 1px solid var(--line); background: var(--surface);
+  border-radius: var(--radius, 16px); padding: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--t-fast), border-color var(--t-fast);
+}
+.ar-opp-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--line-strong);
+}
+.ar-opp-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 10px; margin-bottom: 10px;
+}
+.ar-opp-head h3 { margin: 0; font-size: 15px; }
+.ar-opp-desc { color: var(--muted); line-height: 1.6; margin: 0 0 12px; font-size: 13px; }
+.ar-opp-list { margin: 0; padding-left: 18px; color: #3a4961; line-height: 1.8; font-size: 13px; }
+
+/* Priority pills */
+.ar-prior {
+  display: inline-grid; place-items: center;
+  min-width: 34px; padding: 4px 8px;
+  border-radius: 999px; font-size: 12px; font-weight: 900;
+}
+.ar-prior.ar-p0 { background: var(--red-soft); color: var(--red); }
+.ar-prior.ar-p1 { background: #fff6df; color: #af6b00; }
+.ar-prior.ar-p2 { background: var(--green-soft); color: var(--green); }
+
+/* Tabs */
+.ar-tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.ar-tab {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; padding: 8px 12px;
+  color: #4e5e78; font-weight: 800; cursor: pointer; font-size: 12px;
+}
+.ar-tab.active {
+  background: var(--blue); color: #fff; border-color: var(--blue);
+}
+
+/* Table card */
+.ar-table-card { padding: 0; overflow: hidden; }
+.ar-matrix-table { width: 100%; border-collapse: collapse; min-width: 860px; }
+.ar-matrix-table thead th {
+  background: var(--surface-alt); color: #596980;
+  font-size: 12px; text-align: left; padding: 13px 14px;
+  border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.ar-matrix-table tbody td {
+  padding: 14px; border-bottom: 1px solid #eef2f7;
+  vertical-align: top; color: #26344d;
+}
+.ar-matrix-table tbody tr:hover { background: var(--surface-hover); }
+.ar-score { display: inline-flex; align-items: center; gap: 3px; color: #202b3f; font-weight: 900; }
+.ar-score small { color: #92a0b5; font-weight: 700; }
+.ar-product-pill {
+  display: inline-block; background: var(--blue-soft); color: #245eff;
+  padding: 5px 8px; border-radius: 8px;
+  font-weight: 800; font-size: 12px; margin: 2px 3px 2px 0; white-space: nowrap;
+}
+.ar-action-link { color: var(--blue); font-weight: 900; cursor: pointer; white-space: nowrap; }
+.ar-action-link + .ar-action-link { margin-left: 8px; }
+
+/* Empty guide */
+.ar-empty-guide {
+  border: 1px dashed #cfd8e7; border-radius: var(--radius, 16px);
+  background: var(--surface); padding: 24px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.ar-empty-guide h3 { margin: 0 0 8px; color: var(--text); }
+.ar-empty-guide p { margin: 0; color: var(--muted); line-height: 1.6; }
+.ar-actions { display: flex; gap: 10px; align-items: center; }
+.ar-primary {
+  background: var(--blue); color: #fff; border-color: var(--blue);
+  border-radius: 10px; padding: 8px 14px; cursor: pointer; font-weight: 700; border: 1px solid var(--blue);
+}
+
+/* Drawer */
+.ar-drawer-mask {
+  position: fixed; inset: 0; background: rgba(20, 31, 50, .18);
+  opacity: 0; pointer-events: none; transition: .18s ease; z-index: 500;
+}
+.ar-drawer-mask.open { opacity: 1; pointer-events: auto; }
+.ar-drawer {
+  position: fixed; top: 0; right: 0;
+  width: 520px; max-width: 92vw; height: 100vh;
+  background: var(--surface); border-left: 1px solid var(--line);
+  box-shadow: -20px 0 45px rgba(19, 33, 68, .13);
+  transform: translateX(100%); transition: .22s ease; z-index: 600;
+  display: flex; flex-direction: column;
+}
+.ar-drawer.open { transform: translateX(0); }
+.ar-drawer-header {
+  padding: 18px 20px; border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; gap: 14px; align-items: flex-start;
+}
+.ar-drawer-header h3 { margin: 0 0 6px; font-size: 18px; color: var(--text); }
+.ar-drawer-header p { margin: 0; color: var(--muted); line-height: 1.5; }
+.ar-close {
+  border: 0; background: #f3f6fb; width: 34px; height: 34px;
+  border-radius: 10px; cursor: pointer; font-size: 18px;
+}
+.ar-drawer-body { padding: 18px 20px 28px; overflow: auto; }
+.ar-detail-section { margin-bottom: 18px; }
+.ar-detail-section h4 { margin: 0 0 10px; font-size: 14px; color: var(--text); }
+.ar-quote {
+  background: var(--surface-alt); border: 1px solid var(--line);
+  border-left: 4px solid var(--blue); border-radius: 12px;
+  padding: 12px; color: #33435c; line-height: 1.6; margin-bottom: 8px; font-size: 13px;
+}
+.ar-kv { display: grid; grid-template-columns: 100px 1fr; gap: 9px 12px; font-size: 13px; }
+.ar-kv b { color: #5e6d84; }
+
+/* Table scroll */
+.ar-table-scroll { overflow-x: auto; }
+
+/* Responsive */
+@media (max-width: 1400px) {
+  .ar-cards { grid-template-columns: repeat(3, 1fr); }
+  .ar-charts { grid-template-columns: 1fr 1fr; }
+  .ar-opportunity-grid { grid-template-columns: 1fr 1fr; }
+  .ar-ai-summary { grid-template-columns: 1fr; }
+}
+@media (max-width: 920px) {
+  .ar-cards, .ar-charts, .ar-ai-summary, .ar-opportunity-grid { grid-template-columns: 1fr; }
+  .ar-matrix-table { min-width: 860px; }
+}

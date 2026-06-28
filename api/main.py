@@ -26,12 +26,14 @@ import os
 import sys
 import subprocess
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from .routers import crawler_router, data_router, feishu_webhook_router, llm_config_router, local_tasks_router, websocket_router, pipeline_router, auto_demand_router
+from .routers import crawler_router, data_router, dashboard_router, feishu_webhook_router, llm_config_router, local_tasks_router, websocket_router, pipeline_router, auto_demand_router
+from .auth import AuthMiddleware, is_auth_enabled
+from tools.utils import logger
 
 # Load .env file for Feishu credentials
 # Try python-dotenv first, fall back to manual parser
@@ -59,6 +61,29 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler - sanitizes errors to avoid leaking internals."""
+    import traceback
+    from fastapi.responses import JSONResponse
+
+    logger.error(f"Unhandled exception: {exc}\n{traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error. Check server logs for details."},
+    )
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up database engines on application shutdown."""
+    try:
+        from database.db_session import shutdown_engines as _shutdown
+        await _shutdown()
+    except ImportError:
+        pass  # sqlalchemy not installed, no engines to shut down
+
 # Get webui static files directory
 WEBUI_DIR = os.path.join(os.path.dirname(__file__), "webui")
 
@@ -76,6 +101,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add API authentication middleware if WEBUI_API_KEY is set
+if is_auth_enabled():
+    app.add_middleware(AuthMiddleware)
+
 # Register routers
 app.include_router(crawler_router, prefix="/api")
 app.include_router(data_router, prefix="/api")
@@ -85,7 +114,9 @@ app.include_router(llm_config_router, prefix="/api")
 app.include_router(local_tasks_router, prefix="/api")
 app.include_router(websocket_router, prefix="/api")
 app.include_router(pipeline_router, prefix="/api")
-app.include_router(auto_demand_router, prefix="/api")
+if auto_demand_router is not None:
+    app.include_router(auto_demand_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api")
 
 @app.get("/")
 async def serve_frontend():

@@ -36,6 +36,7 @@ from tools.httpx_util import make_async_client
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 import config
+from base.base_crawler import AbstractApiClient
 from proxy.proxy_mixin import ProxyRefreshMixin
 from tools import utils
 
@@ -46,7 +47,7 @@ from .exception import DataFetchError
 from .field import SearchType
 
 
-class WeiboClient(ProxyRefreshMixin):
+class WeiboClient(ProxyRefreshMixin, AbstractApiClient):
 
     def __init__(
         self,
@@ -278,7 +279,8 @@ class WeiboClient(ProxyRefreshMixin):
                 return dict()
 
     async def get_note_image(self, image_url: str) -> bytes:
-        image_url = image_url[8:]  # Remove https://
+        if image_url.startswith("https://"):
+            image_url = image_url[8:]  # Remove https://
         sub_url = image_url.split("/")
         image_url = ""
         for i in range(len(sub_url)):
@@ -302,7 +304,7 @@ class WeiboClient(ProxyRefreshMixin):
                 else:
                     return response.content
             except httpx.HTTPError as exc:  # some wrong when call httpx.request method, such as connection error, client error, server error or response status code is not 2xx
-                utils.logger.error(f"[DouYinClient.get_aweme_media] {exc.__class__.__name__} for {exc.request.url} - {exc}")    # Keep original exception type name for developer debugging
+                utils.logger.error(f"[WeiboClient.get_note_image] {exc.__class__.__name__} for {exc.request.url} - {exc}")
                 return None
 
     async def get_creator_container_info(self, creator_id: str) -> Dict:

@@ -23,7 +23,7 @@ import os
 from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
-from integrations.feishu_webhook import send_crawl_summary, get_webhook_url, send_requirements_doc
+from integrations.feishu_webhook import send_crawl_summary, get_webhook_url, send_demand_report
 
 from ..schemas import CrawlerStartRequest, LogEntry
 
@@ -282,95 +282,131 @@ class CrawlerManager:
             # Process ended
             if self.status == "running":
                 exit_code = self.process.returncode if self.process else -1
-                if exit_code == 0:
-                    entry = self._create_log_entry("Crawler completed successfully", "success")
-                    await self._push_log(entry)
+                entry = self._create_log_entry(
+                    f"Crawler exited with code {exit_code}",
+                    "success" if exit_code == 0 else "warning"
+                )
+                await self._push_log(entry)
 
-                    # === Full pipeline: analyze + AI solutions + Feishu output ===
-                    try:
-                        pf = self.current_config.platform.value if self.current_config else "unknown"
-                        kw = self.current_config.keywords if self.current_config else ""
+                # === Full pipeline: analyze + AI solutions + Feishu output ===
+                # Run analysis whenever data files exist, even if crawler exited non-zero.
+                try:
+                    pf = self.current_config.platform.value if self.current_config else "unknown"
+                    kw = self.current_config.keywords if self.current_config else ""
 
-                        import json as _json
-                        dd = self._project_root / "data" / pf / "jsonl"
-                        records = []
-                        if dd.exists():
-                            fs = sorted(dd.glob("search_contents_*.jsonl"), reverse=True)
-                            if fs:
-                                with open(fs[0], "r", encoding="utf-8") as fh:
-                                    for ln in fh:
-                                        ln = ln.strip()
-                                        if ln:
-                                            try:
-                                                records.append(_json.loads(ln))
-                                            except Exception:
-                                                pass
+                    import json as _json
+                    dd = self._project_root / "data" / pf / "jsonl"
+                    records = []
+                    if dd.exists():
+                        fs = sorted(dd.glob("search_contents_*.jsonl"), reverse=True)
+                        if fs:
+                            with open(fs[0], "r", encoding="utf-8") as fh:
+                                for ln in fh:
+                                    ln = ln.strip()
+                                    if ln:
+                                        try:
+                                            records.append(_json.loads(ln))
+                                        except Exception:
+                                            pass
 
-                        rcount = len(records)
-                        we = self._create_log_entry(f"Loaded {rcount} records for analysis", "info")
-                        await self._push_log(we)
+                    rcount = len(records)
+                    we = self._create_log_entry(f"Loaded {rcount} records for analysis", "info")
+                    await self._push_log(we)
 
-                        if rcount > 0:
-                            from api.services.needs_analyzer import analyze_records
-                            analysis = analyze_records(records)
-                            agg = analysis.get("aggregation", [])
-                            classified = analysis.get("classified_records", [])
-                            we = self._create_log_entry(f"Analysis: {len(agg)} categories", "info")
+                    deduped_records = records
+                    removed_count = 0
+                    if rcount > 0:
+                        # Step 0: LLM dedup
+                        from api.services.dedup_filter import llm_dedup_records
+                        orig_count = rcount
+                        deduped_records, removed_count = llm_dedup_records(records)
+                        if removed_count > 0:
+                            we = self._create_log_entry(
+                                f"LLM dedup: {orig_count} -> {len(deduped_records)} ({removed_count} removed)", "info"
+                            )
                             await self._push_log(we)
 
-                            solutions_data = []
-                            llm_key = os.environ.get("LLM_API_KEY", "")
-                            if llm_key:
-                                try:
-                                    from api.services.solution_generator import generate_all_solutions
-                                    sol_result = generate_all_solutions(
-                                        aggregation=agg, classified_records=classified,
-                                        api_key=llm_key,
-                                        api_url=os.environ.get("LLM_API_URL", "https://api.deepseek.com/v1/chat/completions"),
-                                        model=os.environ.get("LLM_MODEL", "deepseek-v4-flash"),
-                                        max_categories=5,
-                                    )
-                                    solutions_data = sol_result.get("solutions", [])
-                                    we = self._create_log_entry(f"AI solutions: {len(solutions_data)} categories", "info")
-                                    await self._push_log(we)
-                                except Exception as sol_exc:
-                                    we = self._create_log_entry(f"Solution gen: {sol_exc}", "warning")
-                                    await self._push_log(we)
+                        # Step 1: Classify
+                        from api.services.needs_analyzer import analyze_records
+                        analysis = analyze_records(deduped_records)
+                        agg = analysis.get("aggregation", [])
+                        classified = analysis.get("classified_records", [])
+                        we = self._create_log_entry(f"Analysis: {len(agg)} categories", "info")
+                        await self._push_log(we)
 
-                            items = []
-                            for r in records[:5]:
-                                items.append({"title": r.get("title",""), "desc": r.get("desc","")[:80], "nickname": r.get("nickname",""), "likes": r.get("liked_count","0"), "url": r.get("note_url","")})
+                        # Step 2: AI solutions
+                        solutions_data = []
+                        llm_key = os.environ.get("LLM_API_KEY", "")
+                        if llm_key:
+                            try:
+                                from api.services.solution_generator import generate_all_solutions
+                                sol_result = generate_all_solutions(
+                                    aggregation=agg, classified_records=classified,
+                                    api_key=llm_key,
+                                    api_url=os.environ.get("LLM_API_URL", "https://api.deepseek.com/v1/chat/completions"),
+                                    model=os.environ.get("LLM_MODEL", "deepseek-v4-flash"),
+                                    max_categories=5,
+                                )
+                                solutions_data = sol_result.get("solutions", [])
+                                we = self._create_log_entry(f"AI solutions: {len(solutions_data)} categories", "info")
+                                await self._push_log(we)
+                            except Exception as sol_exc:
+                                we = self._create_log_entry(f"Solution gen: {sol_exc}", "warning")
+                                await self._push_log(we)
 
-                            wu = get_webhook_url()
-                            if wu:
-                                ct = self.current_config.crawler_type.value if self.current_config else "unknown"
-                                summary_sent = send_crawl_summary(
-                                    platform=pf,
-                                    crawler_type=ct,
-                                    keywords=kw,
-                                    stats={"success": rcount, "skipped": 0, "failed": 0},
-                                    content_items=items[:5],
-                                    webhook_url=wu,
+                        # Step 3: Feishu notifications
+                        wu = get_webhook_url()
+                        analysis_sent = False
+                        if wu:
+                            ct = self.current_config.crawler_type.value if self.current_config else "unknown"
+                            summary_sent = send_crawl_summary(
+                                platform=pf, crawler_type=ct, keywords=kw,
+                                stats={"total_records": len(deduped_records)} if removed_count == 0
+                                else {"total_records": len(deduped_records), "dedup_removed": removed_count},
+                                webhook_url=wu,
+                            )
+                            we = self._create_log_entry(
+                                "Summary sent" if summary_sent else "Summary send failed",
+                                "info" if summary_sent else "warning"
+                            )
+                            await self._push_log(we)
+
+                            if agg:
+                                analysis_sent = send_demand_report(
+                                    aggregation=agg, solutions_data=solutions_data,
+                                    keyword=kw, platform=pf, total=len(deduped_records),
+                                    classified_records=classified, webhook_url=wu,
                                 )
                                 we = self._create_log_entry(
-                                    "Summary sent" if summary_sent else "Summary send failed",
-                                    "info" if summary_sent else "warning",
+                                    "Analysis report sent" if analysis_sent else "Analysis report send failed",
+                                    "success" if analysis_sent else "warning"
                                 )
                                 await self._push_log(we)
-                                if agg:
-                                    analysis_sent = send_analysis_report(aggregation=agg, solutions_data=solutions_data, keyword=kw, platform=pf, total=rcount, webhook_url=wu)
-                                    we = self._create_log_entry(
-                                        "Analysis report sent" if analysis_sent else "Analysis report send failed",
-                                        "success" if analysis_sent else "warning",
-                                    )
-                                    await self._push_log(we)
 
-                    except Exception as pipe_exc:
-                        we = self._create_log_entry(f"Pipeline: {pipe_exc}", "error")
-                        await self._push_log(we)
-                else:
-                    entry = self._create_log_entry(f"Crawler exited with code: {exit_code}", "warning")
-                    # Send failure webhook
+                        # Step 5: Persist report + push to frontend
+                        try:
+                            from api.services.report_store import save_report
+                            from api.routers.websocket import broadcast_analysis_report
+                            report_data = save_report(
+                                platform=pf, keyword=kw, total=len(deduped_records),
+                                aggregation=agg or [], classified_records=classified or [],
+                                solutions_data=solutions_data or [], webhook_sent=analysis_sent,
+                            )
+                            await broadcast_analysis_report(report_data)
+                            we = self._create_log_entry(
+                                f"Report saved & pushed: {len(agg or [])} categories", "success"
+                            )
+                            await self._push_log(we)
+                        except Exception as rpt_exc:
+                            we = self._create_log_entry(f"Report save/push: {rpt_exc}", "warning")
+                            await self._push_log(we)
+
+                except Exception as pipe_exc:
+                    we = self._create_log_entry(f"Pipeline: {pipe_exc}", "error")
+                    await self._push_log(we)
+
+                # Send failure webhook if crawler exited non-zero
+                if exit_code != 0:
                     try:
                         wu = get_webhook_url()
                         if wu:
@@ -378,14 +414,14 @@ class CrawlerManager:
                             ct = self.current_config.crawler_type.value if self.current_config else "unknown"
                             kw = self.current_config.keywords if self.current_config else ""
                             from integrations.feishu_webhook import send_simple_message
-                            failure_sent = send_simple_message(title="Collection Failed", content=f"Platform: {pf} | Type: {ct} | Keyword: {kw}", template="red", webhook_url=wu)
-                            we = self._create_log_entry(
-                                "Failure webhook sent" if failure_sent else "Failure webhook send failed",
-                                "warning",
+                            send_simple_message(
+                                title="Collection Exited Non-Zero",
+                                content=f"Platform: {pf} | Type: {ct} | Keyword: {kw} | Exit: {exit_code}",
+                                template="yellow", webhook_url=wu,
                             )
-                            await self._push_log(we)
                     except Exception:
                         pass
+
                 await self._push_log(entry)
                 self.status = "idle"
 

@@ -1,0 +1,2 @@
+[permissions]
+allow = ["Bash(echo \"HOME: $HOME\" && echo \"USER: $USER\" && ls -la ~/.claude/ 2>/dev/null || echo \"No ~/.claude/ directory found\")", "Bash(echo \"Checking for CC Switch...\" && which ccswitch 2>/dev/null || echo \"ccswitch not found in PATH\")"]

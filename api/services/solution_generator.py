@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from tools.utils import logger
+
 
 # Default config - uses DeepSeek via OpenAI-compatible API
 DEFAULT_API_URL = "https://api.deepseek.com/v1/chat/completions"
@@ -101,6 +103,7 @@ def generate_solutions(
         model = os.getenv("LLM_MODEL", DEFAULT_MODEL)
 
     if not api_key:
+        logger.warning(f"[SolutionGenerator] No LLM_API_KEY set, using fallback solutions for '{category}'")
         return _fallback_solutions(category)
 
     prompt = SOLUTION_PROMPT.format(
@@ -151,7 +154,7 @@ def generate_solutions(
                 return solutions
             return []
     except Exception as exc:
-        print(f"[SolutionGenerator] LLM call failed for '{category}': {exc}")
+        logger.warning(f"[SolutionGenerator] LLM call failed for '{category}': {exc}")
         return _fallback_solutions(category)
 
 

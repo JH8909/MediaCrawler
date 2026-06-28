@@ -105,7 +105,7 @@ function renderTasks() {
   $("taskTotal").textContent = `（共 ${state.tasks.length} 条）`;
 
   if (!state.tasks.length) {
-    $("taskRows").innerHTML = '<tr><td colspan="7" class="empty">暂无任务，点击“新建任务”写入一条。</td></tr>';
+    $("taskRows").innerHTML = '<tr><td colspan="7" class="empty">暂无任务，点击"新建任务"写入一条。</td></tr>';
     return;
   }
 
@@ -357,87 +357,332 @@ function solutionTextForCategory(category, solutions) {
   return "-";
 }
 
+// ── AI需求机会分析报告 v3 ────────────────────────────────────────
 function normalizeReportRows(report) {
   if (!report) return [];
   const aggregation = Array.isArray(report.aggregation) ? report.aggregation : [];
   const solutions = Array.isArray(report.solutions_data) ? report.solutions_data : [];
-  return aggregation.map((item) => {
-    const category = item.category || item.name || "未分类";
-    const count = Number(item.count || item.total || 0);
+  var solMap = {};
+  solutions.forEach(function(s) {
+    var cat = s.category || "";
+    solMap[cat] = (solMap[cat] || []).concat(s.solutions || []);
+  });
+  return aggregation.map(function(item, i) {
+    var category = item.category || item.name || "未分类";
+    var count = Number(item.count || item.total || 0);
+    var hs = Number(item.hot_score || 0);
+    var catSols = solMap[category] || [];
+    var bestSol = catSols[0] || {};
+    var productType = bestSol.product_type || bestSol.solution_type || "";
+    var priority = i < 3 ? "P0" : i < 5 ? "P1" : "P2";
     return {
-      category,
-      count,
-      solution: solutionTextForCategory(category, solutions),
+      category: category,
+      count: count,
+      hotScore: hs,
+      priority: priority,
+      productType: productType,
+      solutionName: bestSol.name || bestSol.solution_name || "-",
+      solutionSummary: bestSol.summary || "",
+      mvpFeatures: (bestSol.core_features || []).slice(0, 3).join("、"),
+      solutions: catSols,
     };
   });
 }
 
+// Color palette for product types
+var PRODUCT_COLORS = ["#3b72ff", "#16a06a", "#7c4dff", "#f5a524", "#f04438", "#0891b2", "#9333ea", "#db2777"];
+
 function renderAnalysisReport(report) {
   if (report === undefined) report = state.analysisReport;
-  var rowsEl = document.getElementById('analysisReportRows');
-  if (!rowsEl) return;
-  var hasReport = Boolean(report);
-  var statusEl = document.getElementById('analysisReportStatus');
-  if (statusEl) statusEl.textContent = hasReport ? '生成时间：' + (report.generated_at || '-') : '暂无报告';
-  var el;
-  el = document.getElementById('reportTotal'); if(el) el.textContent = hasReport ? String(report.total || 0) : '0';
-  el = document.getElementById('reportCategories'); if(el) el.textContent = hasReport ? String(report.categories || 0) : '0';
-  el = document.getElementById('reportSolutions'); if(el) el.textContent = hasReport ? String(report.solutions || 0) : '0';
-  el = document.getElementById('reportWebhook'); if(el) el.textContent = hasReport && report.webhook_sent ? '已发送' : '未发送';
+  var hasReport = Boolean(report && report.total > 0);
 
-  var rows = normalizeReportRows(report);
-  if (!rows.length) {
-    rowsEl.innerHTML = '<tr><td colspan="4" class="empty">暂无分析报告。在“需求库”选择导出文件后生成报告。</td></tr>';
+  // KPI cards
+  var el;
+  var agg = report && report.aggregation ? report.aggregation : [];
+  var total = report ? (report.total || 0) : 0;
+  var classifiedCount = report ? (report.classified_count || 0) : 0;
+  var solutionsCount = report ? (report.solutions || 0) : 0;
+  var hotCount = agg.filter(function(a) { return (a.hot_score || 0) >= 2; }).length;
+  el = document.getElementById('arReportTotal'); if(el) el.textContent = hasReport ? String(total) : '0';
+  el = document.getElementById('arReportNote'); if(el) el.textContent = hasReport ? '有效 ' + classifiedCount + ' / 已分类 ' + agg.length : '暂无数据';
+  el = document.getElementById('arReportCategories'); if(el) el.textContent = hasReport ? String(agg.length) : '0';
+  el = document.getElementById('arClassifiedNote'); if(el) el.textContent = hasReport ? '已聚类需求簇' : '未分类';
+  el = document.getElementById('arHotCount'); if(el) el.textContent = hasReport ? String(hotCount) : '0';
+  el = document.getElementById('arReportSolutions'); if(el) el.textContent = hasReport ? String(solutionsCount) : '0';
+  el = document.getElementById('arTopOpps'); if(el) el.textContent = hasReport ? String(Math.min(3, agg.length)) : '0';
+  el = document.getElementById('arWebhookStatus'); if(el) el.textContent = hasReport && report.webhook_sent ? '已发送' : '未发送';
+  el = document.getElementById('arGeneratedAt'); if(el) el.textContent = report && report.generated_at ? report.generated_at : '飞书通知';
+
+  // Show/hide sections
+  var sections = document.querySelectorAll('#arOpportunitySection, #arTableSection');
+  var emptyGuide = document.getElementById('arEmptyGuide');
+  sections.forEach(function(s) { s.style.display = hasReport ? '' : 'none'; });
+  if (emptyGuide) emptyGuide.style.display = hasReport ? 'none' : '';
+
+  if (!hasReport) {
+    document.getElementById('arSummaryText').textContent = '暂无分析数据。请在"需求库"中选择数据文件并点击"分析报告"生成报告，或等待采集完成后自动生成。';
+    document.getElementById('arNextSteps').innerHTML = '<div class="ar-mini-item"><span class="ar-rank">1</span><div><b>采集数据</b><p>在"数据采集"页面新建任务，选择平台和关键词。</p></div></div><div class="ar-mini-item"><span class="ar-rank">2</span><div><b>生成分析报告</b><p>采集完成后在"需求库"中点击分析报告按钮。</p></div></div><div class="ar-mini-item"><span class="ar-rank">3</span><div><b>查看结果</b><p>报告自动推送到此页面和飞书群。</p></div></div>';
+    document.getElementById('arBarChart').innerHTML = '<div class="ar-bar-row"><span class="ar-bar-name">暂无数据</span><div class="ar-bar-track"><div class="ar-bar-fill" style="width:100%"></div></div><span class="ar-bar-value">—</span></div>';
     return;
   }
-  var html = '';
-  for (var i = 0; i < rows.length; i++) {
-    var r = rows[i];
-    html += '<tr class="clickable-row" data-category="' + escapeHtml(r.category) + '">';
-    html += '<td style="color:var(--muted);font-size:12px">' + (i + 1) + '</td>';
-    html += '<td><strong>' + escapeHtml(r.category) + '</strong></td>';
-    html += '<td>' + r.count + '</td>';
-    html += '<td>' + escapeHtml(r.solution || '-') + '</td>';
-    html += '</tr>';
-  }
-  rowsEl.innerHTML = html;
 
-  rowsEl.querySelectorAll('.clickable-row').forEach(function(tr) {
-    tr.addEventListener('click', function() {
-      var cat = tr.dataset.category;
-      var sols = (state.analysisReport && state.analysisReport.solutions_data) || [];
-      var filtered = filterSolutions(sols);
-      openSolutionDialog(cat, filtered);
+  // AI Summary
+  var top3Names = agg.slice(0, 3).map(function(a) { return a.category; });
+  var summaryText = "本批数据中，用户最集中关注" + (top3Names.length ? "「" + top3Names.join("」「") + "」" : "各个") + "方向。";
+  if (top3Names.length >= 2) summaryText += "优先建议围绕" + top3Names[0] + "和" + top3Names[1] + "开发产品方案。";
+  summaryText += "详细分类和AI产品建议见下方表格。";
+  document.getElementById('arSummaryText').textContent = summaryText;
+
+  var tagHtml = top3Names.map(function(n) { return '<span class="ar-tag ar-p0">核心：' + escapeHtml(n) + '</span>'; }).join('');
+  tagHtml += '<span class="ar-tag ar-ai">AI可解决度高</span>';
+  document.getElementById('arTagRow').innerHTML = tagHtml;
+
+  // Next steps
+  document.getElementById('arNextSteps').innerHTML =
+    '<div class="ar-mini-item"><span class="ar-rank">1</span><div><b>先做"' + escapeHtml(top3Names[0] || '未知') + '"方案</b><p>高频且AI可解决，验证核心功能即可。</p></div></div>' +
+    '<div class="ar-mini-item"><span class="ar-rank">2</span><div><b>补充代表评论证据链</b><p>每个需求簇保留5-10条原始内容，提升报告可信度。</p></div></div>' +
+    '<div class="ar-mini-item"><span class="ar-rank">3</span><div><b>导出到飞书/企微</b><p>把Top 3机会推送到群聊供团队讨论。</p></div></div>';
+
+  // Charts
+  renderBarChart(agg);
+  renderDonutChart(report);
+  renderQuadChart(agg);
+
+  // Opportunity cards
+  var oppHtml = '';
+  var rows = normalizeReportRows(report);
+  rows.slice(0, 6).forEach(function(r) {
+    oppHtml += '<div class="ar-opp-card"><div class="ar-opp-head"><h3>' + escapeHtml(r.category) + '</h3><span class="ar-prior ar-p0">' + escapeHtml(r.priority) + '</span></div>';
+    oppHtml += '<p class="ar-opp-desc">' + escapeHtml(r.solutionSummary || (r.count + '次提及，热度' + r.hotScore)) + '</p>';
+    if (r.mvpFeatures) oppHtml += '<ul class="ar-opp-list">' + r.mvpFeatures.split('、').map(function(f) { return '<li>' + escapeHtml(f) + '</li>'; }).join('') + '</ul>';
+    oppHtml += '</div>';
+  });
+  document.getElementById('arOpportunityGrid').innerHTML = oppHtml || '<p>暂无方案详情</p>';
+
+  // Detail table
+  renderReportTable(rows);
+
+  // Bind tabs
+  bindArTabs();
+  bindArSidebar();
+  bindArDrawer();
+}
+
+function renderBarChart(agg) {
+  var maxCount = agg.length ? Math.max.apply(null, agg.map(function(a) { return a.count || 0; })) : 1;
+  var html = '';
+  agg.slice(0, 8).forEach(function(item) {
+    var pct = Math.round(((item.count || 0) / maxCount) * 100);
+    html += '<div class="ar-bar-row"><span class="ar-bar-name">' + escapeHtml(item.category) + '</span><div class="ar-bar-track"><div class="ar-bar-fill" style="width:' + pct + '%"></div></div><span class="ar-bar-value">' + (item.count || 0) + '</span></div>';
+  });
+  if (!html) html = '<div class="ar-bar-row"><span class="ar-bar-name">暂无数据</span><div class="ar-bar-track"><div class="ar-bar-fill" style="width:100%"></div></div><span class="ar-bar-value">—</span></div>';
+  document.getElementById('arBarChart').innerHTML = html;
+}
+
+function renderDonutChart(report) {
+  var solutions = report && report.solutions_data ? report.solutions_data : [];
+  var typeCount = {};
+  solutions.forEach(function(s) {
+    (s.solutions || []).forEach(function(sol) {
+      var t = sol.product_type || sol.solution_type || "其他";
+      typeCount[t] = (typeCount[t] || 0) + 1;
     });
   });
-}async function analyzeAndReport(filePath) {
-  if (!window.confirm(`将分析此文件并发送报告到飞书群：${filePath}\n确认继续？`)) {
+  var entries = Object.keys(typeCount);
+  if (!entries.length) {
+    document.getElementById('arDonut').style.background = '#edf2fa';
+    document.getElementById('arLegend').innerHTML = '<div class="ar-legend-item"><span>暂无数据</span><b>—</b></div>';
+    return;
+  }
+  var total = entries.reduce(function(s, k) { return s + typeCount[k]; }, 0);
+  var cumulative = 0;
+  var segments = entries.map(function(k, i) {
+    var pct = typeCount[k] / total;
+    var start = cumulative;
+    cumulative += pct;
+    return { name: k, count: typeCount[k], start: start, end: cumulative, color: PRODUCT_COLORS[i % PRODUCT_COLORS.length] };
+  });
+  var donutStr = segments.map(function(s) {
+    return s.color + ' ' + (s.start * 100).toFixed(0) + '% ' + (s.end * 100).toFixed(0) + '%';
+  }).join(', ');
+  document.getElementById('arDonut').style.background = 'conic-gradient(' + donutStr + ')';
+  document.getElementById('arLegend').innerHTML = segments.map(function(s) {
+    return '<div class="ar-legend-item"><span><i class="ar-dot" style="background:' + s.color + '"></i>' + escapeHtml(s.name) + '</span><b>' + s.count + '</b></div>';
+  }).join('');
+}
+
+function renderQuadChart(agg) {
+  var html = '<div class="ar-quad-label">高热度 × 高频次</div>';
+  if (!agg.length) { document.getElementById('arQuad').innerHTML = html; return; }
+  var maxCount = Math.max.apply(null, agg.map(function(a) { return a.count || 0; }));
+  var maxHot = Math.max.apply(null, agg.map(function(a) { return a.hot_score || 0; }));
+  maxHot = maxHot || 1; maxCount = maxCount || 1;
+  agg.slice(0, 12).forEach(function(item) {
+    var left = Math.min(92, ((item.count || 0) / maxCount) * 92);
+    var top = Math.min(92, 92 - ((item.hot_score || 0) / maxHot) * 92);
+    var c = item.hot_score > (maxHot * 0.6) && item.count > (maxCount * 0.5) ? 'rgba(22,160,106,.85)' : 'rgba(59,114,255,.85)';
+    html += '<span class="ar-bubble" style="left:' + left + '%;top:' + top + '%;background:' + c + '" title="' + escapeHtml(item.category) + '"></span>';
+  });
+  document.getElementById('arQuad').innerHTML = html;
+}
+
+function renderReportTable(rows) {
+  var html = '';
+  rows.forEach(function(r, i) {
+    html += '<tr data-cat="' + escapeHtml(r.category) + '" data-priority="' + r.priority + '" data-hot="' + (r.hotScore >= 2 ? 'hot' : '') + '">';
+    html += '<td><span class="ar-prior ar-p0">' + escapeHtml(r.priority) + '</span></td>';
+    html += '<td><b>' + escapeHtml(r.category) + '</b><br><small>' + escapeHtml(r.solutionSummary.substring(0, 30)) + '</small></td>';
+    html += '<td>' + escapeHtml(r.category) + '</td>';
+    html += '<td>' + r.count + '</td>';
+    html += '<td><span class="ar-score">' + r.hotScore + '</span></td>';
+    html += '<td>' + (r.productType ? '<span class="ar-product-pill">' + escapeHtml(r.productType) + '</span>' : '-') + '</td>';
+    html += '<td>' + escapeHtml(r.solutionName) + '</td>';
+    html += '<td><small>' + escapeHtml(r.mvpFeatures || '-') + '</small></td>';
+    html += '<td><span class="ar-action-link ar-detail-link">查看详情</span></td>';
+    html += '</tr>';
+  });
+  document.getElementById('arReportTable').innerHTML = html || '<tr><td colspan="9" class="empty">暂无明细数据</td></tr>';
+}
+
+function bindArTabs() {
+  document.querySelectorAll('#arFilterTabs .ar-tab').forEach(function(tab) {
+    tab.onclick = function() {
+      document.querySelectorAll('#arFilterTabs .ar-tab').forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      var filter = tab.dataset.filter;
+      document.querySelectorAll('#arReportTable tr').forEach(function(tr) {
+        if (filter === 'all') { tr.style.display = ''; return; }
+        if (filter === 'p0') tr.style.display = tr.dataset.priority === 'P0' ? '' : 'none';
+        if (filter === 'hot') tr.style.display = tr.dataset.hot === 'hot' ? '' : 'none';
+      });
+    };
+  });
+}
+
+function bindArSidebar() {
+  document.querySelectorAll('#productTypeFilter .filter-btn').forEach(function(btn) {
+    btn.onclick = function() {
+      document.querySelectorAll('#productTypeFilter .filter-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      var filter = btn.dataset.filter;
+      document.querySelectorAll('#arReportTable tr').forEach(function(tr) {
+        if (filter === 'all') { tr.style.display = ''; return; }
+        var cat = tr.dataset.cat || '';
+        tr.style.display = cat.indexOf(filter) >= 0 ? '' : 'none';
+      });
+    };
+  });
+}
+
+function bindArDrawer() {
+  document.querySelectorAll('.ar-detail-link').forEach(function(link) {
+    link.onclick = function() {
+      var tr = this.closest('tr');
+      var cat = tr.dataset.cat || '';
+      var report = state.analysisReport || {};
+      var solutions = (report.solutions_data || []).filter(function(s) { return s.category === cat; });
+      var classified = (report.classified_preview || report.classified_records || []).filter(function(r) {
+        return (r.categories || []).indexOf(cat) >= 0;
+      });
+
+      document.getElementById('arDrawerTitle').textContent = cat || '需求详情';
+
+      // Quotes
+      var quotesHtml = '';
+      classified.slice(0, 5).forEach(function(r) {
+        var text = r.extracted_text || r.content || r.desc || '';
+        var nickname = r.nickname || '';
+        var likes = r.liked_count || r.like_count || 0;
+        if (text) quotesHtml += '<div class="ar-quote">' + escapeHtml(text.substring(0, 150)) + (nickname ? ' — <b>' + escapeHtml(nickname) + '</b>' + (likes ? ' ❤' + likes : '') : '') + '</div>';
+      });
+      if (!quotesHtml) quotesHtml = '<p style="color:var(--muted)">暂无代表内容摘录</p>';
+      document.getElementById('arDrawerQuotes').innerHTML = quotesHtml;
+
+      // Keywords
+      var kwHtml = '';
+      var details = classified.length && classified[0].category_details ? classified[0].category_details : [];
+      if (details.length && details[0].matched_keywords) {
+        details[0].matched_keywords.forEach(function(kw) { kwHtml += '<span class="ar-tag ar-ai">' + escapeHtml(kw) + '</span>'; });
+      }
+      if (!kwHtml) kwHtml = '<span class="ar-tag">暂无关键词信息</span>';
+      document.getElementById('arDrawerKeywords').innerHTML = kwHtml;
+
+      // Solutions detail
+      var solHtml = '';
+      var allSols = [];
+      solutions.forEach(function(s) { allSols = allSols.concat(s.solutions || []); });
+      allSols.slice(0, 3).forEach(function(sol) {
+        solHtml += '<div class="ar-mini-item" style="margin-bottom:8px"><span class="ar-rank">★</span><div><b>' + escapeHtml(sol.name || sol.solution_name || '方案') + '</b>';
+        solHtml += '<p>' + escapeHtml(sol.summary || '') + '</p>';
+        solHtml += '<div style="font-size:12px;color:var(--muted);margin-top:4px"><span class="ar-tag">' + escapeHtml(sol.product_type || sol.solution_type || '') + '</span> <span class="ar-tag">' + escapeHtml(sol.cost || '') + '成本</span></div></div></div>';
+      });
+      if (!solHtml) solHtml = '<p style="color:var(--muted)">暂无AI方案详情</p>';
+      document.getElementById('arDrawerSolutions').innerHTML = solHtml;
+
+      document.getElementById('arDrawer').classList.add('open');
+      document.getElementById('arMask').classList.add('open');
+    };
+  });
+
+  var closeBtn = document.getElementById('arCloseDrawer');
+  var mask = document.getElementById('arMask');
+  if (closeBtn) closeBtn.onclick = hideArDrawer;
+  if (mask) mask.onclick = hideArDrawer;
+}
+
+function hideArDrawer() {
+  document.getElementById('arDrawer').classList.remove('open');
+  document.getElementById('arMask').classList.remove('open');
+}
+
+async function analyzeAndReport(filePath) {
+  if (!window.confirm("将分析此文件并发送报告到飞书群：" + filePath + "\n确认继续？")) {
     return;
   }
   try {
     appendLocalLog("info", "正在分析数据...");
-    const data = await api("/api/data/analyze-report", {
+    var data = await api("/api/data/analyze-report", {
       method: "POST",
       body: JSON.stringify({ file_path: filePath, dry_run: false, batch_size: 100 }),
     });
     state.analysisReport = {
-      ...data,
-      file_path: filePath,
+      total: data.total || 0,
+      categories: data.categories || 0,
+      aggregation: data.aggregation || [],
+      classified_records: data.classified_records || [],
+      classified_count: (data.classified_records || []).length,
+      solutions: data.solutions || 0,
+      solutions_data: data.solutions_data || [],
+      webhook_sent: data.webhook_sent || false,
       generated_at: new Date().toLocaleString("zh-CN", { hour12: false }),
+      file_path: filePath,
     };
     renderAnalysisReport();
     $("dataPreviewBox").textContent = JSON.stringify(data, null, 2);
     if (data.webhook_sent) {
-      appendLocalLog("success", `分析完成：${data.total} 条数据，${data.categories} 个分类，已发送飞书群报告`);
+      appendLocalLog("success", "分析完成：" + data.total + " 条数据，" + data.categories + " 个分类，已发送飞书群报告");
     } else {
-      appendLocalLog("warning", `分析完成：${data.total} 条数据，${data.categories} 个分类，但 Webhook 未配置`);
+      appendLocalLog("warning", "分析完成：" + data.total + " 条数据，" + data.categories + " 个分类，但 Webhook 未配置");
     }
     if (data.solutions > 0) {
-      appendLocalLog("info", `AI 已为 ${data.solutions} 个痛点生成解决方案`);
+      appendLocalLog("info", "AI 已为 " + data.solutions + " 个痛点生成解决方案");
     }
   } catch (error) {
-    appendLocalLog("error", `分析失败：${error.message}`);
+    appendLocalLog("error", "分析失败：" + error.message);
   }
+}
+
+// Backward-compat: bind old filter sidebar if it exists
+function bindOldReportFilters() {
+  var oldFilter = document.getElementById('productTypeFilter');
+  if (!oldFilter) return;
+  oldFilter.querySelectorAll('.filter-btn').forEach(function(btn) {
+    btn.onclick = function() {
+      oldFilter.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      bindArSidebar();
+    };
+  });
 }
 
 async function previewDataFile(filePath) {
@@ -906,6 +1151,8 @@ async function loadPipelineStatus() {
         total: totalRecords,
         categories: aggArray.length,
         aggregation: aggArray,
+        classified_records: [],
+        classified_count: totalRecords,
         solutions: mergedSolutions.length,
         solutions_data: mergedSolutions,
         webhook_sent: anyWebhookSent,
@@ -1052,13 +1299,85 @@ function filterSolutions(solutions) {
   return result;
 }
 
+// ── WebSocket: real-time log stream + analysis report push ──
+function connectLogSocket() {
+  var protocol = location.protocol === "https:" ? "wss" : "ws";
+  var wsUrl = protocol + "://" + location.host + "/api/ws/logs";
+  var ws = new WebSocket(wsUrl);
+  ws.onopen = function () {
+    appendLocalLog("info", "实时日志已连接");
+  };
+  ws.onmessage = function (event) {
+    try {
+      var msg = JSON.parse(event.data);
+      // Check for analysis report push
+      if (msg.type === "analysis_report" && msg.data) {
+        state.analysisReport = {
+          total: msg.data.total || 0,
+          categories: msg.data.categories || 0,
+          aggregation: msg.data.aggregation || [],
+          classified_records: msg.data.classified_preview || [],
+          classified_count: msg.data.classified_count || 0,
+          solutions: msg.data.solutions || 0,
+          solutions_data: msg.data.solutions_data || [],
+          webhook_sent: msg.data.webhook_sent || false,
+          generated_at: msg.data.generated_at || new Date().toLocaleString("zh-CN", { hour12: false }),
+        };
+        renderAnalysisReport();
+        appendLocalLog("success", "新分析报告已接收：" + (msg.data.total || 0) + " 条数据，" + (msg.data.categories || 0) + " 个分类");
+        return;
+      }
+      // Treat as log entry
+      var entry = msg;
+      if (entry.timestamp && entry.message != null) {
+        state.crawlerLogs.push(entry);
+        state.crawlerLogs = state.crawlerLogs.slice(-200);
+        renderLogs();
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+  };
+  ws.onclose = function () {
+    setTimeout(connectLogSocket, 5000);
+  };
+  ws.onerror = function () {
+    // will trigger onclose
+  };
+}
+
+// ── Fetch latest report on page load ──
+async function fetchLatestReport() {
+  try {
+    var data = await api("/api/data/analysis-reports/latest");
+    if (data && data.total > 0) {
+      state.analysisReport = {
+        total: data.total || 0,
+        categories: data.categories || 0,
+        aggregation: data.aggregation || [],
+        classified_records: data.classified_preview || [],
+        classified_count: data.classified_count || 0,
+        solutions: data.solutions || 0,
+        solutions_data: data.solutions_data || [],
+        webhook_sent: data.webhook_sent || false,
+        generated_at: data.generated_at || "",
+      };
+      renderAnalysisReport();
+      appendLocalLog("info", "已加载最近分析报告：" + data.total + " 条数据，" + data.categories + " 个分类");
+    }
+  } catch (e) {
+    // No reports yet — that's fine
+  }
+}
+
 async function boot() {
   bindEvents();
   updateCrawlerPreview();
   renderAnalysisReport();
-  await Promise.all([loadEnv(), loadConfig(), loadTasks(), loadLogs(), loadCrawlerStatus(), loadDataFiles(), loadWebhookStatus(), loadLlmConfig(), loadPipelineStatus()]);
+  await Promise.all([loadEnv(), loadConfig(), loadTasks(), loadLogs(), loadCrawlerStatus(), loadDataFiles(), loadWebhookStatus(), loadLlmConfig(), loadPipelineStatus(), fetchLatestReport()]);
   setInterval(loadLogs, 2500);
   setInterval(loadDataFiles, 8000);  // auto-refresh data files
+  connectLogSocket();
   appendLocalLog("info", "控制台已启动，本机模式。");
 }
 

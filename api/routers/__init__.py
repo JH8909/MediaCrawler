@@ -18,11 +18,17 @@
 
 from .crawler import router as crawler_router
 from .data import router as data_router
+from .dashboard import router as dashboard_router
 from .feishu_webhook import router as feishu_webhook_router
 from .llm_config import router as llm_config_router
 from .local_tasks import router as local_tasks_router
 from .websocket import router as websocket_router
 from .pipeline import router as pipeline_router
-from .auto_demand import router as auto_demand_router
 
-__all__ = ["crawler_router", "data_router", "feishu_webhook_router", "llm_config_router", "local_tasks_router", "websocket_router", "pipeline_router", "auto_demand_router"]
+# auto_demand depends on openpyxl which may not be installed
+try:
+    from .auto_demand import router as auto_demand_router
+except ImportError:
+    auto_demand_router = None  # type: ignore
+
+__all__ = ["crawler_router", "data_router", "dashboard_router", "feishu_webhook_router", "llm_config_router", "local_tasks_router", "websocket_router", "pipeline_router", "auto_demand_router"]

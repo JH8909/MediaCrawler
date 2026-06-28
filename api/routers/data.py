@@ -16,14 +16,18 @@
 # 详细许可条款请参阅项目根目录下的LICENSE文件。
 # 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
 
-import os
 import json
+import os
+import tempfile
+import zipfile
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
+
+from tools.utils import logger
 
 router = APIRouter(prefix="/data", tags=["data"])
 
@@ -68,12 +72,20 @@ def get_file_info(file_path: Path) -> dict:
 
 
 @router.get("/files")
-async def list_data_files(platform: Optional[str] = None, file_type: Optional[str] = None):
-    """Get data file list"""
+async def list_data_files(
+    platform: Optional[str] = None,
+    file_type: Optional[str] = None,
+    sort_by: str = Query("modified_at", pattern="^(modified_at|name|size|record_count)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
+    search: Optional[str] = None,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+):
+    """Get data file list with filtering, sorting, pagination"""
     if not DATA_DIR.exists():
-        return {"files": []}
+        return {"files": [], "total": 0}
 
-    files = []
+    all_files = []
     for root, dirs, filenames in os.walk(DATA_DIR):
         root_path = Path(root)
         for filename in filenames:
@@ -92,14 +104,22 @@ async def list_data_files(platform: Optional[str] = None, file_type: Optional[st
                 continue
 
             try:
-                files.append(get_file_info(file_path))
+                info = get_file_info(file_path)
+                # Text search in filename
+                if search and search.lower() not in info["name"].lower():
+                    continue
+                all_files.append(info)
             except Exception:
                 continue
 
-    # Sort by modification time (newest first)
-    files.sort(key=lambda x: x["modified_at"], reverse=True)
+    # Sort
+    reverse = sort_order == "desc"
+    all_files.sort(key=lambda x: x.get(sort_by, 0) or 0, reverse=reverse)
 
-    return {"files": files}
+    total = len(all_files)
+    paginated = all_files[offset:offset + limit]
+
+    return {"files": paginated, "total": total}
 
 
 @router.get("/files/{file_path:path}")
@@ -121,13 +141,11 @@ async def get_file_content(file_path: str, preview: bool = True, limit: int = 10
                 with open(full_path, "r", encoding="utf-8") as f:
                     reader = csv.DictReader(f)
                     rows = []
+                    total = 0
                     for i, row in enumerate(reader):
-                        if i >= limit:
-                            break
-                        rows.append(row)
-                    # Re-read to get total count
-                    f.seek(0)
-                    total = sum(1 for _ in f) - 1
+                        total += 1
+                        if i < limit:
+                            rows.append(row)
                     return {"data": rows, "total": total}
             elif full_path.suffix.lower() in (".xlsx", ".xls"):
                 import pandas as pd
@@ -172,7 +190,7 @@ async def get_file_content(file_path: str, preview: bool = True, limit: int = 10
 
 @router.get("/download/{file_path:path}")
 async def download_file(file_path: str):
-    """Download file"""
+    """Download single file"""
     full_path = _resolve_data_file(file_path)
 
     return FileResponse(
@@ -180,6 +198,102 @@ async def download_file(file_path: str):
         filename=full_path.name,
         media_type="application/octet-stream"
     )
+
+
+class ExportRequest(BaseModel):
+    file_paths: List[str]
+    format: str = "zip"
+
+
+@router.post("/export")
+async def export_files(request: ExportRequest):
+    """Bulk export files as ZIP archive"""
+    resolved = []
+    for fp in request.file_paths:
+        try:
+            full = _resolve_data_file(fp)
+            resolved.append(full)
+        except HTTPException:
+            continue
+
+    if not resolved:
+        raise HTTPException(status_code=404, detail="No valid files to export")
+
+    # Create ZIP in memory
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+            for fp in resolved:
+                arcname = str(fp.relative_to(DATA_DIR))
+                zf.write(fp, arcname)
+
+        tmp_path = tmp.name
+        tmp.close()
+        return FileResponse(
+            path=tmp_path,
+            filename="mediacrawler_export.zip",
+            media_type="application/zip",
+            headers={"Content-Disposition": "attachment; filename=mediacrawler_export.zip"},
+        )
+    finally:
+        # Clean up temp file after response
+        import threading
+        def _cleanup():
+            import time
+            time.sleep(5)
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+        threading.Thread(target=_cleanup, daemon=True).start()
+
+
+@router.get("/search")
+async def search_data_files(
+    q: str = Query(..., min_length=1, description="Search keyword"),
+    platform: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=500),
+):
+    """Search within JSONL data files for records matching keyword"""
+    if not DATA_DIR.exists():
+        return {"results": [], "total": 0}
+
+    results = []
+    for root, dirs, filenames in os.walk(DATA_DIR):
+        root_path = Path(root)
+        for filename in filenames:
+            file_path = root_path / filename
+            if file_path.suffix.lower() not in {".jsonl", ".json", ".csv"}:
+                continue
+
+            if platform and platform.lower() not in str(file_path.relative_to(DATA_DIR)).lower():
+                continue
+
+            try:
+                with open(file_path, "r", encoding="utf-8-sig", errors="ignore") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        if q.lower() in line.lower():
+                            try:
+                                record = json.loads(line)
+                            except json.JSONDecodeError:
+                                record = {"_raw": line[:200]}
+                            results.append({
+                                "file": str(file_path.relative_to(DATA_DIR)),
+                                "record": record,
+                            })
+                            if len(results) >= limit:
+                                break
+                if len(results) >= limit:
+                    break
+            except Exception:
+                continue
+        if len(results) >= limit:
+            break
+
+    return {"results": results, "total": len(results), "query": q}
 
 
 @router.get("/stats")
@@ -250,9 +364,29 @@ async def analyze_and_report(request: DataSyncRequest):
                 "webhook_sent": False,
             }
         
-        # Step 2: Classify and aggregate
+        # Step 2: LLM dedup before classification
+        from api.services.dedup_filter import llm_dedup_records
+        orig_count = len(records)
+        deduped_records, removed_count = llm_dedup_records(records)
+        if removed_count > 0:
+            logger.info(f"[DataRouter] LLM dedup: {orig_count} -> {len(deduped_records)} ({removed_count} removed)")
+
+        if not deduped_records:
+            return {
+                "status": "ok",
+                "message": "去重后无有效数据",
+                "total": 0,
+                "categories": 0,
+                "aggregation": [],
+                "classified_records": [],
+                "solutions": 0,
+                "solutions_data": [],
+                "webhook_sent": False,
+            }
+
+        # Step 3: Classify and aggregate
         from api.services.needs_analyzer import analyze_records
-        analysis = analyze_records(records)
+        analysis = analyze_records(deduped_records)
         agg = analysis.get("aggregation", [])
         classified = analysis.get("classified_records", [])
         
@@ -270,30 +404,64 @@ async def analyze_and_report(request: DataSyncRequest):
                     max_categories=5,
                 )
                 solutions_data = sol_result.get("solutions", [])
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(f"[DataRouter] LLM solution generation failed: {exc}")
         
-        # Step 4: Send webhook report (single consolidated message)
+        # Step 5: Send webhook report (single consolidated message)
         from integrations.feishu_webhook import send_demand_report, get_webhook_url
         wu = get_webhook_url()
         webhook_sent = False
-        if wu:
-            # Extract platform name and keyword from the data file path
-            platform_name = full_path.parent.name if full_path.parent.name != "data" else ""
-            # Get source_keyword from first record if available
-            first_keyword = (records[0].get("source_keyword", "") or "") if records else ""
+
+        # Load category rules for enriched report
+        category_rules = {}
+        _rules_path = os.path.join(os.path.dirname(__file__), "..", "data", "category_rules.json")
+        if os.path.isfile(_rules_path):
+            try:
+                with open(_rules_path, "r", encoding="utf-8") as _f_rules:
+                    category_rules = json.load(_f_rules)
+            except Exception:
+                pass
+
+        # Extract platform name and keyword from the data file path
+        # Path is: data/<platform>/<subdir>/file.jsonl — extract the platform folder
+        _parts = full_path.relative_to(DATA_DIR).parts
+        platform_name = _parts[0] if _parts else ""
+        first_keyword = (deduped_records[0].get("source_keyword", "") or "") if deduped_records else ""
+
+        if wu and agg:
             webhook_sent = send_demand_report(
                 aggregation=agg,
                 solutions_data=solutions_data,
                 keyword=first_keyword,
                 platform=platform_name,
-                total=len(records),
+                total=len(deduped_records),
+                classified_records=classified,
+                category_rules=category_rules,
                 webhook_url=wu,
             )
         
+        # Step 6: Persist report
+        if agg:
+            try:
+                from api.services.report_store import save_report
+                _report = save_report(
+                    platform=platform_name,
+                    keyword=first_keyword,
+                    total=len(deduped_records),
+                    aggregation=agg,
+                    classified_records=classified,
+                    solutions_data=solutions_data,
+                    webhook_sent=webhook_sent,
+                )
+                logger.info(f"[DataRouter] Report saved: {_report.get('file', '')}")
+            except Exception as rpt_exc:
+                logger.warning(f"[DataRouter] Report save failed: {rpt_exc}")
+
         return {
             "status": "ok",
-            "total": len(records),
+            "total": len(deduped_records),
+            "original_total": orig_count,
+            "dedup_removed": removed_count,
             "categories": len(agg),
             "aggregation": agg,
             "classified_records": classified,
@@ -302,8 +470,39 @@ async def analyze_and_report(request: DataSyncRequest):
             "webhook_sent": webhook_sent,
         }
     except Exception as exc:
+        import traceback as _tb
+        logger.error(f"[DataRouter] analyze_and_report failed: {_tb.format_exc()}")
         from fastapi import HTTPException
         raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}")
+
+@router.get("/analysis-reports")
+async def list_analysis_reports(
+    platform: Optional[str] = None,
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Get list of previously generated analysis reports (lightweight summaries)."""
+    from api.services.report_store import list_reports
+    reports = list_reports(limit=limit, platform=platform)
+    return {"reports": reports, "total": len(reports)}
+
+
+@router.get("/analysis-reports/latest")
+async def latest_analysis_report(platform: Optional[str] = None):
+    """Get the most recent analysis report with full data."""
+    from api.services.report_store import get_latest_report
+    report = get_latest_report(platform=platform)
+    if not report:
+        return {
+            "status": "ok",
+            "total": 0,
+            "categories": 0,
+            "aggregation": [],
+            "solutions": 0,
+            "solutions_data": [],
+            "message": "暂无报告",
+        }
+    return report
+
 
 def _resolve_data_file(file_path: str) -> Path:
     full_path = (DATA_DIR / file_path).resolve()

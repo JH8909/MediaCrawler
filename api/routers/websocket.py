@@ -59,6 +59,11 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+async def broadcast_analysis_report(report: dict) -> None:
+    """Push structured analysis report to all connected WebSocket clients."""
+    await manager.broadcast({"type": "analysis_report", "data": report})
+
+
 async def log_broadcaster():
     """Background task: read logs from queue and broadcast"""
     queue = crawler_manager.get_log_queue()

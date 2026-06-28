@@ -101,12 +101,7 @@ class ExpiringLocalCache(AbstractCache):
         :return:
         """
 
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
+        loop = asyncio.get_running_loop()
         self._cron_task = loop.create_task(self._start_clear_cron())
 
     def _clear(self):
@@ -114,9 +109,9 @@ class ExpiringLocalCache(AbstractCache):
         Clean up cache based on expiration time
         :return:
         """
-        for key, (value, expire_time) in self._cache_container.items():
-            if expire_time < time.time():
-                del self._cache_container[key]
+        expired = [k for k, (v, t) in self._cache_container.items() if t < time.time()]
+        for key in expired:
+            del self._cache_container[key]
 
     async def _start_clear_cron(self):
         """

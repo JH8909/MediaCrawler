@@ -22,7 +22,10 @@ import argparse
 import logging
 
 from .crawler_util import *
-from .slider_util import *
+try:
+    from .slider_util import *
+except ImportError:
+    pass  # slider requires cv2/numpy — only needed for douyin captcha
 from .time_util import *
 
 

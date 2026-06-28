@@ -16,19 +16,44 @@
 # 详细许可条款请参阅项目根目录下的LICENSE文件。
 # 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+# sqlalchemy is an optional dependency — only needed for MySQL/PostgreSQL/SQLite storage.
+# JSONL (default) works without it.
+_sqlalchemy_available = False
+try:
+    from sqlalchemy import text  # noqa: F401
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession  # noqa: F401
+    from sqlalchemy.orm import sessionmaker  # noqa: F401
+    _sqlalchemy_available = True
+except ImportError:
+    pass
+
 from contextlib import asynccontextmanager
 from .models import Base
 import config
 from config.db_config import mysql_db_config, sqlite_db_config, postgres_db_config
 
-# Keep a cache of engines
+# Keep a cache of engines and session factories
 _engines = {}
+_session_factories = {}
+
+
+async def shutdown_engines():
+    """Dispose all cached database engines on application shutdown."""
+    for db_type, engine in list(_engines.items()):
+        await engine.dispose()
+        del _engines[db_type]
+    _session_factories.clear()
+
+
+def _require_sqlalchemy():
+    if not _sqlalchemy_available:
+        raise ImportError(
+            "sqlalchemy is not installed. Install with: uv add sqlalchemy aiosqlite asyncmy asyncpg"
+        )
 
 
 async def create_database_if_not_exists(db_type: str):
+    _require_sqlalchemy()
     if db_type == "mysql" or db_type == "db":
         # Connect to the server without a database
         server_url = f"mysql+asyncmy://{mysql_db_config['user']}:{mysql_db_config['password']}@{mysql_db_config['host']}:{mysql_db_config['port']}"
@@ -39,7 +64,8 @@ async def create_database_if_not_exists(db_type: str):
     elif db_type == "postgres":
         # Connect to the default 'postgres' database
         server_url = f"postgresql+asyncpg://{postgres_db_config['user']}:{postgres_db_config['password']}@{postgres_db_config['host']}:{postgres_db_config['port']}/postgres"
-        print(f"[init_db] Connecting to Postgres: host={postgres_db_config['host']}, port={postgres_db_config['port']}, user={postgres_db_config['user']}, dbname=postgres")
+        import logging
+        logging.getLogger("db_session").info(f"Connecting to Postgres: host={postgres_db_config['host']}, port={postgres_db_config['port']}, user={postgres_db_config['user']}, dbname=postgres")
         # Isolation level AUTOCOMMIT is required for CREATE DATABASE
         engine = create_async_engine(server_url, echo=False, isolation_level="AUTOCOMMIT")
         async with engine.connect() as conn:
@@ -59,6 +85,8 @@ def get_async_engine(db_type: str = None):
 
     if db_type in ["json", "jsonl", "csv"]:
         return None
+
+    _require_sqlalchemy()
 
     if db_type == "sqlite":
         db_url = f"sqlite+aiosqlite:///{sqlite_db_config['db_path']}"
@@ -86,12 +114,18 @@ async def create_tables(db_type: str = None):
 
 @asynccontextmanager
 async def get_session() -> AsyncSession:
-    engine = get_async_engine(config.SAVE_DATA_OPTION)
+    db_type = config.SAVE_DATA_OPTION
+    engine = get_async_engine(db_type)
     if not engine:
         yield None
         return
-    AsyncSessionFactory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    session = AsyncSessionFactory()
+
+    if db_type not in _session_factories:
+        _require_sqlalchemy()
+        _session_factories[db_type] = sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+    session = _session_factories[db_type]()
     try:
         yield session
         await session.commit()

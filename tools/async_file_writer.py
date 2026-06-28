@@ -60,6 +60,13 @@ class AsyncFileWriter:
                 await f.write(json.dumps(item, ensure_ascii=False) + '\n')
 
     async def write_single_item_to_json(self, item: Dict, item_type: str):
+        import warnings
+        warnings.warn(
+            "JSON mode reads and rewrites the entire file on every write (O(n²) complexity). "
+            "Use JSONL (jsonl) mode for better performance with large datasets.",
+            UserWarning,
+            stacklevel=2,
+        )
         file_path = self._get_file_path('json', item_type)
         async with self.lock:
             existing_data = []

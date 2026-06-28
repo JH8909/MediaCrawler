@@ -48,6 +48,74 @@ from .help import parse_note_info_from_note_url, parse_creator_info_from_url, ge
 from .login import XiaoHongShuLogin
 
 
+# Xiaohongshu-specific anti-detection JavaScript.
+# Patches navigator.webdriver, plugins, chrome runtime, permissions, etc.
+# Injected via add_init_script so it runs before any page JS.
+_XHS_ANTI_DETECTION_JS = """
+(() => {
+    // Remove webdriver fingerprint
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    // Fake plugins
+    Object.defineProperty(navigator, 'plugins', {
+        get: () => [1, 2, 3, 4, 5],
+    });
+    // Fake languages
+    Object.defineProperty(navigator, 'languages', {
+        get: () => ['zh-CN', 'zh', 'en'],
+    });
+    // Fake platform if needed
+    Object.defineProperty(navigator, 'platform', {
+        get: () => 'Win32',
+    });
+    // Fake hardwareConcurrency
+    Object.defineProperty(navigator, 'hardwareConcurrency', {
+        get: () => 8,
+    });
+    // Fake deviceMemory
+    Object.defineProperty(navigator, 'deviceMemory', {
+        get: () => 8,
+    });
+    // Remove chrome.runtime automation flag
+    if (window.chrome && window.chrome.runtime) {
+        window.chrome.runtime.connect = undefined;
+    }
+    // Remove PhantomJS traces
+    delete window.callPhantom;
+    delete window._phantom;
+    delete window.__phantomas;
+    // Remove cdc_ trails (cdp automation properties)
+    try {
+        var props = Object.getOwnPropertyNames(document);
+        for (var i = 0; i < props.length; i++) {
+            if (props[i].indexOf('cdc_') === 0) {
+                delete document[props[i]];
+            }
+        }
+    } catch (_) {}
+    // Mock permissions API
+    var originalQuery = window.navigator.permissions.query;
+    window.navigator.permissions.query = function(parameters) {
+        if (parameters.name === 'notifications') {
+            return Promise.resolve({ state: Notification.permission });
+        }
+        return originalQuery.call(this, parameters);
+    };
+    // Mock Notification
+    if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+        try { Object.defineProperty(Notification, 'permission', { get: () => 'default' }); } catch (_) {}
+    }
+    // Suppress console warnings from automation detection
+    var _origWarn = console.warn;
+    console.warn = function() {
+        var args = Array.prototype.slice.call(arguments);
+        var msg = args.join('');
+        if (msg.indexOf('ChromeDriver') !== -1 || msg.indexOf('webdriver') !== -1) return;
+        return _origWarn.apply(console, args);
+    };
+})();
+"""
+
+
 class XiaoHongShuCrawler(AbstractCrawler):
     context_page: Page
     xhs_client: XiaoHongShuClient
@@ -58,7 +126,11 @@ class XiaoHongShuCrawler(AbstractCrawler):
         self.index_url = "https://www.rednote.com" if config.XHS_INTERNATIONAL else "https://www.xiaohongshu.com"
         self.cookie_urls = [self.index_url]
         # self.user_agent = utils.get_user_agent()
-        self.user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+        self.user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            + "AppleWebKit/537.36 (KHTML, like Gecko) "
+            + "Chrome/126.0.0.0 Safari/537.36"
+        )
         self.cdp_manager = None
         self.ip_proxy_pool = None  # Proxy IP pool for automatic proxy refresh
 
@@ -89,8 +161,10 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     self.user_agent,
                     headless=config.HEADLESS,
                 )
-                # stealth.min.js is a js script to prevent the website from detecting the crawler.
-                await self.browser_context.add_init_script(path="libs/stealth.min.js")
+
+            # Always inject stealth scripts (both CDP and standard mode)
+            await self.browser_context.add_init_script(path="libs/stealth.min.js")
+            await self.browser_context.add_init_script(script=_XHS_ANTI_DETECTION_JS)
 
             self.context_page = await self.browser_context.new_page()
             await self.context_page.goto(self.index_url)
@@ -179,8 +253,9 @@ class XiaoHongShuCrawler(AbstractCrawler):
                     await self.batch_get_note_comments(note_ids, xsec_tokens)
 
                     # Sleep after each page navigation
-                    await asyncio.sleep(config.CRAWLER_MAX_SLEEP_SEC)
-                    utils.logger.info(f"[XiaoHongShuCrawler.search] Sleeping for {config.CRAWLER_MAX_SLEEP_SEC} seconds after page {page-1}")
+                    delay = random.uniform(config.CRAWLER_MAX_SLEEP_SEC * 0.6, config.CRAWLER_MAX_SLEEP_SEC * 1.4)
+                    await asyncio.sleep(delay)
+                    utils.logger.info(f"[XiaoHongShuCrawler.search] Sleeping for {delay:.1f}s after page {page-1}")
                 except DataFetchError:
                     utils.logger.error("[XiaoHongShuCrawler.search] Get note detail error")
                     break
@@ -207,8 +282,8 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 utils.logger.error(f"[XiaoHongShuCrawler.get_creators_and_notes] Failed to parse creator URL: {e}")
                 continue
 
-            # Use fixed crawling interval
-            crawl_interval = config.CRAWLER_MAX_SLEEP_SEC
+            # Use randomized crawling interval
+            crawl_interval = random.uniform(config.CRAWLER_MAX_SLEEP_SEC * 0.5, config.CRAWLER_MAX_SLEEP_SEC * 1.5)
             # Get all note information of the creator
             all_notes_list = await self.xhs_client.get_all_notes_by_creator(
                 user_id=user_id,
@@ -306,9 +381,10 @@ class XiaoHongShuCrawler(AbstractCrawler):
 
                 note_detail.update({"xsec_token": xsec_token, "xsec_source": xsec_source})
 
-                # Sleep after fetching note detail
-                await asyncio.sleep(config.CRAWLER_MAX_SLEEP_SEC)
-                utils.logger.info(f"[get_note_detail_async_task] Sleeping for {config.CRAWLER_MAX_SLEEP_SEC} seconds after fetching note {note_id}")
+                # Sleep after fetching note detail (randomized)
+                delay = random.uniform(config.CRAWLER_MAX_SLEEP_SEC * 0.6, config.CRAWLER_MAX_SLEEP_SEC * 1.4)
+                await asyncio.sleep(delay)
+                utils.logger.info(f"[get_note_detail_async_task] Sleeping for {delay:.1f}s after fetching note {note_id}")
 
                 return note_detail
 
@@ -343,8 +419,8 @@ class XiaoHongShuCrawler(AbstractCrawler):
         """Get note comments with keyword filtering and quantity limitation"""
         async with semaphore:
             utils.logger.info(f"[XiaoHongShuCrawler.get_comments] Begin get note id comments {note_id}")
-            # Use fixed crawling interval
-            crawl_interval = config.CRAWLER_MAX_SLEEP_SEC
+            # Use randomized crawling interval
+            crawl_interval = random.uniform(config.CRAWLER_MAX_SLEEP_SEC * 0.5, config.CRAWLER_MAX_SLEEP_SEC * 1.5)
             await self.xhs_client.get_note_all_comments(
                 note_id=note_id,
                 xsec_token=xsec_token,
@@ -375,13 +451,13 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 "pragma": "no-cache",
                 "priority": "u=1, i",
                 "referer": f"{self.index_url}/",
-                "sec-ch-ua": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
+                "sec-ch-ua": '"Chromium";v="126", "Google Chrome";v="126", "Not.A/Brand";v="99"',
                 "sec-ch-ua-mobile": "?0",
                 "sec-ch-ua-platform": '"Windows"',
                 "sec-fetch-dest": "empty",
                 "sec-fetch-mode": "cors",
                 "sec-fetch-site": "same-site",
-                "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+                "user-agent": self.user_agent,
                 "Cookie": cookie_str,
             },
             playwright_page=self.context_page,

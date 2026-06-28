@@ -79,7 +79,11 @@ class DouYinClient(AbstractApiClient, ProxyRefreshMixin):
         if not params:
             return
         headers = headers or self.headers
-        local_storage: Dict = await self.playwright_page.evaluate("() => window.localStorage")  # type: ignore
+
+        if self.playwright_page is not None:
+            local_storage: Dict = await self.playwright_page.evaluate("() => window.localStorage")
+        else:
+            local_storage = {}
         common_params = {
             "device_platform": "webapp",
             "aid": "6383",
@@ -116,7 +120,7 @@ class DouYinClient(AbstractApiClient, ProxyRefreshMixin):
         if request_method == "POST":
             post_data = params
 
-        if "/v1/web/general/search" not in uri:
+        if self.playwright_page is not None and "/v1/web/general/search" not in uri:
             a_bogus = await get_a_bogus(uri, query_string, post_data, headers["User-Agent"], self.playwright_page)
             params["a_bogus"] = a_bogus
 
@@ -148,9 +152,10 @@ class DouYinClient(AbstractApiClient, ProxyRefreshMixin):
         return await self.request(method="POST", url=f"{self._host}{uri}", data=data, headers=headers)
 
     async def pong(self, browser_context: BrowserContext) -> bool:
-        local_storage = await self.playwright_page.evaluate("() => window.localStorage")
-        if local_storage.get("HasUserLogin", "") == "1":
-            return True
+        if self.playwright_page is not None:
+            local_storage = await self.playwright_page.evaluate("() => window.localStorage")
+            if local_storage.get("HasUserLogin", "") == "1":
+                return True
 
         _, cookie_dict = await utils.convert_browser_context_cookies(
             browser_context,

@@ -44,6 +44,7 @@ from media_platform.weibo import WeiboCrawler
 from media_platform.xhs import XiaoHongShuCrawler
 from media_platform.zhihu import ZhihuCrawler
 from tools.async_file_writer import AsyncFileWriter
+from tools import utils
 from var import crawler_type_var
 
 
@@ -78,9 +79,9 @@ def _flush_excel_if_needed() -> None:
         from store.excel_store_base import ExcelStoreBase
 
         ExcelStoreBase.flush_all()
-        print("[Main] Excel files saved successfully")
+        utils.logger.info("[Main] Excel files saved successfully")
     except Exception as e:
-        print(f"[Main] Error flushing Excel data: {e}")
+        utils.logger.error(f"[Main] Error flushing Excel data: {e}")
 
 
 async def _generate_wordcloud_if_needed() -> None:
@@ -94,7 +95,7 @@ async def _generate_wordcloud_if_needed() -> None:
         )
         await file_writer.generate_wordcloud_from_comments()
     except Exception as e:
-        print(f"[Main] Error generating wordcloud: {e}")
+        utils.logger.error(f"[Main] Error generating wordcloud: {e}")
 
 
 async def main() -> None:
@@ -103,7 +104,7 @@ async def main() -> None:
     args = await cmd_arg.parse_cmd()
     if args.init_db:
         await db.init_db(args.init_db)
-        print(f"Database {args.init_db} initialized successfully.")
+        utils.logger.info(f"Database {args.init_db} initialized successfully.")
         return
 
     crawler = CrawlerFactory.create_crawler(platform=config.PLATFORM)
@@ -125,7 +126,7 @@ async def async_cleanup() -> None:
             except Exception as e:
                 error_msg = str(e).lower()
                 if "closed" not in error_msg and "disconnected" not in error_msg:
-                    print(f"[Main] Error cleaning up CDP browser: {e}")
+                    utils.logger.error(f"[Main] Error cleaning up CDP browser: {e}")
 
         elif getattr(crawler, "browser_context", None):
             try:
@@ -133,7 +134,7 @@ async def async_cleanup() -> None:
             except Exception as e:
                 error_msg = str(e).lower()
                 if "closed" not in error_msg and "disconnected" not in error_msg:
-                    print(f"[Main] Error closing browser context: {e}")
+                    utils.logger.error(f"[Main] Error closing browser context: {e}")
 
     if config.SAVE_DATA_OPTION in ("db", "sqlite"):
         await db.close()

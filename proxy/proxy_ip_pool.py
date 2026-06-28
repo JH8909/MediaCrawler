@@ -21,6 +21,7 @@
 # @Author  : relakkes@gmail.com
 # @Time    : 2023/12/2 13:45
 # @Desc    : IP proxy pool implementation
+import asyncio
 import random
 import time
 from typing import Dict, List
@@ -59,6 +60,7 @@ class ProxyIpPool:
         self.proxy_list: List[IpInfoModel] = []
         self.ip_provider: ProxyProvider = ip_provider
         self.current_proxy: IpInfoModel | None = None  # Currently used proxy
+        self._lock = asyncio.Lock()
 
     async def load_proxies(self) -> None:
         """
@@ -102,11 +104,12 @@ class ProxyIpPool:
         Randomly extract a proxy IP from the proxy pool
         :return:
         """
-        if len(self.proxy_list) == 0:
-            await self._reload_proxies()
+        async with self._lock:
+            if len(self.proxy_list) == 0:
+                await self._reload_proxies()
 
-        proxy = random.choice(self.proxy_list)
-        self.proxy_list.remove(proxy)  # Remove an IP once extracted
+            proxy = random.choice(self.proxy_list)
+            self.proxy_list.remove(proxy)  # Remove an IP once extracted
         if self.enable_validate_ip:
             if not await self._is_valid_proxy(proxy):
                 raise Exception(

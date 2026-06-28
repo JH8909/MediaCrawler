@@ -32,11 +32,9 @@ def send_crawl_summary(
     crawler_type: str,
     keywords: str,
     stats: Optional[Dict[str, int]] = None,
-    file_paths: Optional[List[str]] = None,
-    content_items: Optional[List[Dict[str, str]]] = None,
     webhook_url: Optional[str] = None,
 ) -> bool:
-    """Send a crawl completion summary to Feishu group chat via webhook"""
+    """Send a concise crawl completion summary to Feishu group chat."""
     if not webhook_url:
         webhook_url = get_webhook_url()
     if not webhook_url:
@@ -44,63 +42,32 @@ def send_crawl_summary(
     stats = stats or {}
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    status_emoji = "OK" if stats.get("success", 0) > 0 else "NO" if stats.get("failed", 0) > 0 else "II"
+    has_data = any(v > 0 for v in stats.values())
 
-    fields_lines = [
+    lines = [
         "**采集时间：** " + now,
         "**平台：** " + platform,
         "**采集类型：** " + crawler_type,
     ]
     if keywords:
-        fields_lines.append("**关键词：** " + keywords)
-
-    fields_lines.append("")
-    fields_lines.append("**统计：**")
-    fields_lines.append("- 成功：" + str(stats.get('success', 0)) + " 条")
-    fields_lines.append("- 跳过：" + str(stats.get('skipped', 0)) + " 条")
-    fields_lines.append("- 失败：" + str(stats.get('failed', 0)) + " 条")
-
-    if file_paths:
-        fields_lines.append("")
-        fields_lines.append("**输出文件：**")
-        for fp in file_paths[:5]:
-            fields_lines.append("- " + fp)
-        if len(file_paths) > 5:
-            fields_lines.append("- ... 共 " + str(len(file_paths)) + " 个文件")
-    if content_items:
-        fields_lines.append("")
-        fields_lines.append("**采集内容：**")
-        fields_lines.append("")
-        for i, item in enumerate(content_items[:5], 1):
-            title = item.get("title", "") or ""
-            desc = item.get("desc", "") or ""
-            nickname = item.get("nickname", "") or ""
-            likes = item.get("likes", "0") or "0"
-            url = item.get("url", "") or ""
-            if not title and not desc:
-                continue
-            line = chr(9472) + chr(9472) + " " + str(i) + ". " + (title[:60] if title else desc[:60])
-            fields_lines.append(line)
-            if nickname:
-                fields_lines.append("   作者: " + nickname + " | 赞: " + str(likes))
-            if url:
-                fields_lines.append("   链接: " + url)
-            fields_lines.append("")
+        lines.append("**关键词：** " + keywords)
+    lines.append("")
+    lines.append("**统计：**")
+    for key, val in stats.items():
+        if val:
+            lines.append(f"- {key}：{val} 条")
 
     payload = {
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": status_emoji + " 采集任务完成"},
-                "template": "green" if stats.get("success", 0) > 0 else "red",
+                "title": {"tag": "plain_text", "content": "✅ 采集完成" if has_data else "⏹ 采集完成"},
+                "template": "green" if has_data else "red",
             },
             "elements": [
-                {"tag": "markdown", "content": "\n".join(fields_lines)},
+                {"tag": "markdown", "content": "\n".join(lines)},
                 {"tag": "hr"},
-                {
-                    "tag": "note",
-                    "elements": [{"tag": "plain_text", "content": "MediaCrawler 自动通知"}],
-                },
+                {"tag": "note", "elements": [{"tag": "plain_text", "content": "MediaCrawler 自动通知"}]},
             ],
         },
     }
@@ -157,12 +124,22 @@ def send_requirements_doc(
     platform: str = "",
     keywords: str = "",
     requirements=None,
+    classified_records: list = None,
     webhook_url=None,
 ) -> bool:
-    """Send crawled data as formatted requirements document"""
+    """Send crawled data as formatted requirements document.
+
+    Accepts both legacy 'requirements' (list of dicts with Chinese keys)
+    and 'classified_records' (from needs_analyzer output).
+    """
     if webhook_url is None:
         webhook_url = get_webhook_url()
-    if not webhook_url or not requirements:
+    if not webhook_url:
+        return False
+
+    # Use classified_records if requirements not provided
+    items = requirements or classified_records or []
+    if not items:
         return False
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -177,18 +154,25 @@ def send_requirements_doc(
     lines.append("**平台：** " + pname)
     if keywords:
         lines.append("**关键词：** " + keywords)
-    lines.append("**共获取** " + str(len(requirements)) + " **条需求**")
+    lines.append("**共获取** " + str(len(items)) + " **条需求**")
     lines.append("")
     lines.append("---")
     lines.append("")
 
-    for i, req in enumerate(requirements[:8], 1):
-        title = req.get("需求标题", req.get("需求标题", "")) or "未命名"
-        ctext = req.get("原文内容", "") or ""
-        source = req.get("来源平台", "") or ""
-        link = req.get("来源链接", "") or ""
-        rtype = req.get("需求类型", "未分类") or "未分类"
-        priority = req.get("优先级", "中") or "中"
+    for i, item in enumerate(items[:8], 1):
+        # Try classified_records format first, then legacy format
+        title = (
+            item.get("extracted_text", "")[:30]
+            or item.get("需求标题", "")
+            or "未命名"
+        )
+        ctext = item.get("extracted_text", "") or item.get("原文内容", "") or ""
+        source = item.get("来源平台", "") or ""
+        link = item.get("note_url", "") or item.get("来源链接", "") or ""
+        cats = item.get("categories", [])
+        rtype = (cats[0] if cats else "") or item.get("需求类型", "未分类")
+        hs = item.get("hot_score", 0)
+        priority = "高" if hs > 5 else "中" if hs > 2 else "低"
 
         lines.append("**" + str(i) + ". " + title[:50] + "**")
         if ctext:
@@ -230,50 +214,52 @@ def send_demand_report(
     keyword: str = "",
     platform: str = "",
     total: int = 0,
+    classified_records: list = None,
+    category_rules: dict = None,
     webhook_url: str = None,
 ) -> bool:
-    """Send a clean, focused demand discovery report to Feishu group chat.
+    """Send a concise demand discovery summary to Feishu group chat.
 
-    Shows:
-      - Pain point ranking (top 8)
-      - AI product proposal preview (top 3 categories, top 1 solution each)
-      - Local console link
+    One card with: platform/keyword, top 5 pain points, 1 AI tip, timestamp.
     """
+    if not webhook_url:
+        webhook_url = get_webhook_url()
     if not webhook_url:
         return False
 
-    emojis = ["🔴", "🟠", "🟡", "🟢", "⚪", "🟣", "🟤"]
+    emojis = ["🔴", "🟠", "🟡", "🟢", "⚪"]
 
     lines = []
     lines.append("**📊 需求发现报告**")
-    lines.append("")
     if platform:
         lines.append("**平台：** " + platform + ("  |  **关键词：** " + keyword if keyword else ""))
-    lines.append("**本期发现 " + str(total) + " 条有效数据**")
+    lines.append("**数据：** " + str(total) + " 条  |  " + str(len(aggregation)) + " 个分类")
     lines.append("")
 
-    lines.append("**🔥 痛点排行 & 方案建议**")
-    lines.append("")
-    for i, item in enumerate(aggregation[:8]):
+    # Top 5 pain points — one line each
+    lines.append("**🔥 痛点 Top " + str(min(5, len(aggregation))) + "**")
+    for i, item in enumerate(aggregation[:5]):
         emoji = emojis[i] if i < len(emojis) else "⚫"
-        cat = item["category"]
+        cat_name = item["category"]
         count = item["count"]
         hs = item.get("hot_score", 0)
-        lines.append(emoji + " **" + cat + "**  · " + str(count) + "次" + ("  ★ 热度" + str(hs) if hs else ""))
-        if solutions_data:
-            for sol_item in solutions_data:
-                if sol_item.get("category") == cat:
-                    sols = sol_item.get("solutions", [])
-                    if sols:
-                        sol = sols[0]
-                        ptype = sol.get("product_type", sol.get("solution_type", ""))
-                        cost = sol.get("cost", "")
-                        name = sol.get("name", sol.get("solution_name", ""))
-                        lines.append("  💡 " + name + " (" + ptype + ("/" + cost + "成本" if cost else "") + ")")
-                    break
-        lines.append("")
+        lines.append(f"{emoji} **{cat_name}** · {count}次" + (f"  ★{hs}" if hs else ""))
 
-    lines.append("📝 详情可查看本地控制台：http://localhost:8081")
+    lines.append("")
+
+    # One AI tip
+    if solutions_data and solutions_data[0].get("solutions"):
+        top_sol = solutions_data[0]
+        sols = top_sol.get("solutions", [])
+        if sols:
+            best = sols[0]
+            name = best.get("name", best.get("solution_name", ""))
+            ptype = best.get("product_type", best.get("solution_type", ""))
+            lines.append(f"💡 **AI方案建议**：{name}" + (f"（{ptype}）" if ptype else ""))
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    lines.append("")
+    lines.append(f"🕐 {now}  · 详情查看控制台")
 
     payload = {
         "msg_type": "interactive",
@@ -294,10 +280,11 @@ def send_demand_report(
         with httpx.Client(timeout=15.0) as client:
             response = client.post(webhook_url, json=payload)
             response.raise_for_status()
-            return True
     except Exception as exc:
         print("[FeishuWebhook] Failed to send demand report: " + str(exc))
         return False
+
+    return True
 
 
 # Keep the old name as alias for backward compatibility

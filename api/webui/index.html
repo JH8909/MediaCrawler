@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MediaCrawler 控制台</title>
-    <link rel="stylesheet" href="/static/dashboard.css?v=20260628-14" />
+    <link rel="stylesheet" href="/static/dashboard.css?v=20260628-16" />
   </head>
   <body>
     <div class="app-shell">
@@ -415,87 +415,87 @@
         </div>
 
         <div id="page-analysis" class="page-panel" style="display:none;">
-          <section class="panel analysis-report-panel" id="analysisReportSection">
-            <div class="panel-head">
-              <h2>分析报告</h2>
-              <div class="actions">
-                <span class="status-pill" id="analysisReportStatus">暂无报告</span>
-                <button id="clearAnalysisReportBtn">清空报告</button>
-              </div>
-            </div>
+          <!-- ===== AI需求机会分析报告 ===== -->
+          <section class="ar-section ar-cards" id="arMetricsCards">
+            <div class="ar-card ar-metric"><div class="ar-icon ar-icon-blue">☰</div><div><div class="ar-label">总记录</div><div class="ar-value" id="arReportTotal">0</div><div class="ar-note" id="arReportNote">暂无数据</div></div></div>
+            <div class="ar-card ar-metric"><div class="ar-icon ar-icon-green">⌁</div><div><div class="ar-label">需求分类</div><div class="ar-value" id="arReportCategories">0</div><div class="ar-note" id="arClassifiedNote">未分类</div></div></div>
+            <div class="ar-card ar-metric"><div class="ar-icon ar-icon-red">!</div><div><div class="ar-label">高热度需求</div><div class="ar-value" id="arHotCount">0</div><div class="ar-note">热度 ≥ 2</div></div></div>
+            <div class="ar-card ar-metric"><div class="ar-icon ar-icon-purple">☆</div><div><div class="ar-label">高价值机会</div><div class="ar-value" id="arTopOpps">0</div><div class="ar-note">Top 3 痛点</div></div></div>
+            <div class="ar-card ar-metric"><div class="ar-icon ar-icon-orange">◌</div><div><div class="ar-label">AI 产品方案</div><div class="ar-value" id="arReportSolutions">0</div><div class="ar-note">可生成PRD/MVP</div></div></div>
+            <div class="ar-card ar-metric"><div class="ar-icon ar-icon-green2">↗</div><div><div class="ar-label">WEBHOOK</div><div class="ar-value" style="font-size:22px" id="arWebhookStatus">未发送</div><div class="ar-note" id="arGeneratedAt">飞书通知</div></div></div>
+          </section>
 
-            <div class="report-summary">
-              <div class="report-stat">
-                <div class="report-stat-icon blue">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.6"/><path d="M6.5 7.5h7M6.5 10.5h7M6.5 13.5h4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-                </div>
-                <div class="report-stat-body">
-                  <span>总记录</span>
-                  <strong id="reportTotal">0</strong>
-                </div>
-              </div>
-              <div class="report-stat">
-                <div class="report-stat-icon green">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 14V8l4 3 4-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7" cy="11" r="1.3" fill="currentColor"/><circle cx="11" cy="5" r="1.3" fill="currentColor"/></svg>
-                </div>
-                <div class="report-stat-body">
-                  <span>需求分类</span>
-                  <strong id="reportCategories">0</strong>
-                </div>
-              </div>
-              <div class="report-stat">
-                <div class="report-stat-icon purple">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.5 5h5l-4 3.5 1.5 5L10 12.5 5 15.5l1.5-5L2.5 7h5L10 2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-                </div>
-                <div class="report-stat-body">
-                  <span>AI 方案</span>
-                  <strong id="reportSolutions">0</strong>
-                </div>
-              </div>
-              <div class="report-stat">
-                <div class="report-stat-icon amber">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 10a6 6 0 1112 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M10 6v4l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="16" r="1.2" fill="currentColor"/></svg>
-                </div>
-                <div class="report-stat-body">
-                  <span>Webhook</span>
-                  <strong id="reportWebhook">未发送</strong>
-                </div>
-              </div>
+          <section class="ar-section ar-ai-summary" id="arAiSummary">
+            <div class="ar-card">
+              <div class="ar-section-title"><h2>AI 总评</h2><span class="ar-hint">3秒看结论</span></div>
+              <p class="ar-summary-text" id="arSummaryText">暂无分析数据。请在"需求库"中选择数据文件并点击"分析报告"生成报告，或等待采集完成后自动生成。</p>
+              <div class="ar-tag-row" id="arTagRow"></div>
             </div>
-
-            <div class="report-body-layout">
-              <div class="report-filter-sidebar" id="productTypeFilter">
-                <div class="filter-sidebar-title">产品类型</div>
-                <button class="filter-btn active" data-filter="all">全部</button>
-                <button class="filter-btn" data-filter="小程序">小程序</button>
-                <button class="filter-btn" data-filter="网站">网站</button>
-                <button class="filter-btn" data-filter="APP">APP</button>
-                <button class="filter-btn" data-filter="脚本">脚本</button>
-                <button class="filter-btn" data-filter="Chrome插件">Chrome 插件</button>
-                <button class="filter-btn" data-filter="自动化工具">自动化工具</button>
-                <button class="filter-btn" data-filter="微信机器人">微信机器人</button>
-                <button class="filter-btn" data-filter="命令行工具">命令行工具</button>
-              </div>
-              <div class="report-table-area">
-                <div class="table-wrap report-table-wrap">
-                  <table class="report-table">
-                    <thead>
-                      <tr>
-                        <th style="width:40px">#</th>
-                        <th>痛点分类</th>
-                        <th style="width:72px">频次</th>
-                        <th>AI 产品方案</th>
-                      </tr>
-                    </thead>
-                    <tbody id="analysisReportRows">
-                      <tr><td colspan="4" class="empty">暂无分析报告。在"需求库"选择导出文件后生成报告。</td></tr>
-                    </tbody>
-                  </table>
-                </div>
+            <div class="ar-card">
+              <div class="ar-section-title"><h2>下一步建议</h2><span class="ar-hint">直接执行</span></div>
+              <div class="ar-mini-list" id="arNextSteps">
+                <div class="ar-mini-item"><span class="ar-rank">1</span><div><b>采集数据</b><p>在"数据采集"页面新建任务，选择小红书/抖音等平台和关键词。</p></div></div>
+                <div class="ar-mini-item"><span class="ar-rank">2</span><div><b>生成分析报告</b><p>采集完成后在"需求库"中点击分析报告按钮，系统自动分类和生成方案。</p></div></div>
+                <div class="ar-mini-item"><span class="ar-rank">3</span><div><b>导出到飞书</b><p>配置飞书Webhook URL后，报告会自动推送到群聊。</p></div></div>
               </div>
             </div>
           </section>
+
+          <section class="ar-section ar-charts" id="arCharts">
+            <div class="ar-card ar-chart-card">
+              <div class="ar-section-title"><h2>痛点分布</h2><span class="ar-hint">频次占比</span></div>
+              <div class="ar-bars" id="arBarChart"><div class="ar-bar-row"><span class="ar-bar-name">暂无数据</span><div class="ar-bar-track"><div class="ar-bar-fill" style="width:100%"></div></div><span class="ar-bar-value">—</span></div></div>
+            </div>
+            <div class="ar-card ar-chart-card">
+              <div class="ar-section-title"><h2>产品类型分布</h2><span class="ar-hint">方案形态</span></div>
+              <div class="ar-donut-wrap"><div class="ar-donut" id="arDonut"></div><div class="ar-legend" id="arLegend"><div class="ar-legend-item"><span><i class="ar-dot" style="background:#3b72ff"></i>暂无数据</span><b>—</b></div></div></div>
+            </div>
+            <div class="ar-card ar-chart-card">
+              <div class="ar-section-title"><h2>热度矩阵</h2><span class="ar-hint">右上角优先</span></div>
+              <div class="ar-quad" id="arQuad"><div class="ar-quad-label">高热度 × 高频次</div></div>
+              <div class="ar-tag-row"><span class="ar-tag">横轴：频次</span><span class="ar-tag">纵轴：热度</span></div>
+            </div>
+          </section>
+
+          <section class="ar-section" id="arOpportunitySection" style="display:none">
+            <div class="ar-section-title"><h2>AI产品机会卡片</h2><span class="ar-hint">30秒看能做什么</span></div>
+            <div class="ar-opportunity-grid" id="arOpportunityGrid"></div>
+          </section>
+
+          <section class="ar-section" id="arTableSection" style="display:none">
+            <div class="ar-section-title"><h2>需求机会明细</h2><span class="ar-hint">点击"查看详情"查看证据链和方案</span></div>
+            <div class="ar-tabs" id="arFilterTabs">
+              <button class="ar-tab active" data-filter="all">全部</button>
+              <button class="ar-tab" data-filter="p0">P0 高优先</button>
+              <button class="ar-tab" data-filter="hot">高热度</button>
+            </div>
+            <div class="ar-card ar-table-card ar-table-scroll">
+              <table class="ar-matrix-table">
+                <thead><tr>
+                  <th>优先级</th><th>需求名称</th><th>痛点分类</th><th>频次</th>
+                  <th>热度</th><th>推荐产品</th><th>AI方案</th><th>MVP功能</th><th>操作</th>
+                </tr></thead>
+                <tbody id="arReportTable"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="ar-section ar-empty-guide" id="arEmptyGuide">
+            <div><h3>暂无分析报告</h3><p>请先在"需求库"导入评论/关键词数据，系统将自动生成痛点分类、AI产品方案和可执行报告。</p></div>
+            <div class="ar-actions"><button id="arGoDataBtn">前往需求库</button><button class="ar-primary">查看示例报告</button></div>
+          </section>
         </div>
+
+        <!-- Analysis Report Drawer -->
+        <div class="ar-drawer-mask" id="arMask"></div>
+        <aside class="ar-drawer" id="arDrawer">
+          <div class="ar-drawer-header"><div><h3 id="arDrawerTitle">需求详情</h3><p>从评论中提炼出的高价值需求簇。</p></div><button class="ar-close" id="arCloseDrawer">×</button></div>
+          <div class="ar-drawer-body">
+            <div class="ar-detail-section"><h4>代表内容摘录</h4><div id="arDrawerQuotes"></div></div>
+            <div class="ar-detail-section"><h4>匹配关键词</h4><div class="ar-tag-row" id="arDrawerKeywords"></div></div>
+            <div class="ar-detail-section"><h4>AI方案详情</h4><div id="arDrawerSolutions"></div></div>
+          </div>
+        </aside>
 
       </main>
     </div>
@@ -557,7 +557,7 @@
       </form>
     </dialog>
 
-    <script src="/static/dashboard.js?v=20260628-14"></script>
+    <script src="/static/dashboard.js?v=20260628-16"></script>
 
     <dialog id="solutionDialog" class="solution-dialog">
       <div class="panel-head solution-dialog-head">

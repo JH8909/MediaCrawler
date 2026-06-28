@@ -59,7 +59,7 @@ async def find_login_qrcode(page: Page, selector: str) -> str:
         return login_qrcode_img
 
     except Exception as e:
-        print(e)
+        utils.logger.error(f"[crawler_util.find_login_qrcode] {e}")
         return ""
 
 

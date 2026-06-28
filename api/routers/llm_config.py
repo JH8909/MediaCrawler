@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""LLM API Configuration router - save/read LLM API config to .env"""
+"""LLM API Configuration router - save/read LLM API config to .env (encrypted)"""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+
+from tools.config_crypto import encrypt_sensitive, decrypt_sensitive, is_encrypted
 
 router = APIRouter(prefix="/llm", tags=["llm_config"])
 
@@ -42,6 +44,9 @@ def _read_env() -> dict:
         key = key.strip()
         val = val.strip().strip('"').strip("'")
         if key in LLM_KEYS:
+            # Decrypt sensitive values
+            if key in MASKED_KEYS:
+                val = decrypt_sensitive(val)
             config[key] = val
     for k in LLM_KEYS:
         config.setdefault(k, "")
@@ -78,6 +83,9 @@ def _write_env(updates: dict) -> None:
     cleaned.append("# === LLM Configuration ===")
     for k in LLM_KEYS:
         val = updates.get(k, "")
+        # Encrypt sensitive values before writing to disk
+        if k in MASKED_KEYS and val and not is_encrypted(val):
+            val = encrypt_sensitive(val)
         cleaned.append(f"{k}={val}")
 
     NL = chr(10)

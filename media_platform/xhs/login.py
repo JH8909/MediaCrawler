@@ -211,10 +211,14 @@ class XiaoHongShuLogin(AbstractLogin):
         await asyncio.sleep(wait_redirect_seconds)
 
     async def login_by_cookies(self):
-        """login xiaohongshu website by cookies"""
+        """login xiaohongshu website by cookies.
+        Inject ALL cookies from the cookie string, not just web_session.
+        Missing cookies (a1, gid, webId, etc.) are a strong bot signal to XHS anti-fraud."""
         utils.logger.info("[XiaoHongShuLogin.login_by_cookies] Begin login xiaohongshu by cookie ...")
-        for key, value in utils.convert_str_cookie_to_dict(self.cookie_str).items():
-            if key != "web_session":  # Only set web_session cookie attribute
+        cookie_dict = utils.convert_str_cookie_to_dict(self.cookie_str)
+        cookie_count = 0
+        for key, value in cookie_dict.items():
+            if not value:
                 continue
             await self.browser_context.add_cookies([{
                 'name': key,
@@ -222,3 +226,5 @@ class XiaoHongShuLogin(AbstractLogin):
                 'domain': ".rednote.com" if config.XHS_INTERNATIONAL else ".xiaohongshu.com",
                 'path': "/"
             }])
+            cookie_count += 1
+        utils.logger.info(f"[XiaoHongShuLogin.login_by_cookies] Injected {cookie_count} cookies")

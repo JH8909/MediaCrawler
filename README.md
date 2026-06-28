@@ -1,4 +1,4 @@
-# 🔥 MediaCrawler - 自媒体平台爬虫 🕷️
+# 🔥 MediaCrawler - 自媒体平台爬虫 + AI 需求分析 🕷️🤖
 
 <div align="center">
 
@@ -14,44 +14,89 @@
 [![中文](https://img.shields.io/badge/🇨🇳_中文-当前-blue)](README.md)
 [![English](https://img.shields.io/badge/🇺🇸_English-Available-green)](README_en.md)
 [![Español](https://img.shields.io/badge/🇪🇸_Español-Available-green)](README_es.md)
+
 </div>
 
-
-
 > **免责声明：**
-> 
-> 大家请以学习为目的使用本仓库⚠️⚠️⚠️⚠️，[爬虫违法违规的案件](https://github.com/HiddenStrawberry/Crawler_Illegal_Cases_In_China)  <br>
 >
->本仓库的所有内容仅供学习和参考之用，禁止用于商业用途。任何人或组织不得将本仓库的内容用于非法用途或侵犯他人合法权益。本仓库所涉及的爬虫技术仅用于学习和研究，不得用于对其他平台进行大规模爬虫或其他非法行为。对于因使用本仓库内容而引起的任何法律责任，本仓库不承担任何责任。使用本仓库的内容即表示您同意本免责声明的所有条款和条件。
+> 大家请以学习为目的使用本仓库⚠️⚠️⚠️⚠️，[爬虫违法违规的案件](https://github.com/HiddenStrawberry/Crawler_Illegal_Cases_In_China)
+>
+> 本仓库的所有内容仅供学习和参考之用，禁止用于商业用途。任何人或组织不得将本仓库的内容用于非法用途或侵犯他人合法权益。本仓库所涉及的爬虫技术仅用于学习和研究，不得用于对其他平台进行大规模爬虫或其他非法行为。对于因使用本仓库内容而引起的任何法律责任，本仓库不承担任何责任。使用本仓库的内容即表示您同意本免责声明的所有条款和条件。
 >
 > 点击查看更为详细的免责声明。[点击跳转](#disclaimer)
 
-
-
+---
 
 ## 📖 项目简介
 
-一个功能强大的**多平台自媒体数据采集工具**，支持小红书、抖音、快手、B站、微博、贴吧、知乎等主流平台的公开信息抓取。
+一个功能强大的**多平台自媒体数据采集 + AI 需求分析工具**。支持小红书、抖音、快手、B站、微博、贴吧、知乎等主流平台的公开信息抓取，采集完成后自动进行 LLM 去重、语义分类、AI 产品方案生成，并通过 WebSocket 实时推送到可视化分析报告面板。
+
+### 🎯 核心链路
+
+```
+爬虫采集 → LLM 去重筛选 → 语义分类 → AI 方案生成
+                                          ↓
+                      ┌───────────────────┤
+                      ↓                   ↓
+              report_store.save     send_demand_report
+              (JSON 持久化)          (飞书摘要通知)
+                      ↓
+              WebSocket 实时推送
+                      ↓
+              前端分析报告页面
+                自动渲染展示
+```
 
 ### 🔧 技术原理
 
 - **核心技术**：基于 [Playwright](https://playwright.dev/) 浏览器自动化框架登录保存登录态
 - **无需JS逆向**：利用保留登录态的浏览器上下文环境，通过 JS 表达式获取签名参数
-- **优势特点**：无需逆向复杂的加密算法，大幅降低技术门槛
+- **AI 分析**：集成 LLM（默认 DeepSeek）实现语义去重、需求分类、产品方案生成
+- **实时通信**：WebSocket 推送分析结果到前端，采集完成即时查看报告
 
+---
 
 ## ✨ 功能特性
-| 平台   | 关键词搜索 | 指定帖子ID爬取 | 二级评论 | 指定创作者主页 | 登录态缓存 | IP代理池 | 生成评论词云图 |
-| ------ | ---------- | -------------- | -------- | -------------- | ---------- | -------- | -------------- |
-| 小红书 | ✅          | ✅              | ✅        | ✅              | ✅          | ✅        | ✅              |
-| 抖音   | ✅          | ✅              | ✅        | ✅              | ✅          | ✅        | ✅              |
-| 快手   | ✅          | ✅              | ✅        | ✅              | ✅          | ✅        | ✅              |
-| B 站   | ✅          | ✅              | ✅        | ✅              | ✅          | ✅        | ✅              |
-| 微博   | ✅          | ✅              | ✅        | ✅              | ✅          | ✅        | ✅              |
-| 贴吧   | ✅          | ✅              | ✅        | ✅              | ✅          | ✅        | ✅              |
-| 知乎   | ✅          | ✅              | ✅        | ✅              | ✅          | ✅        | ✅              |
 
+### 采集能力
 
+| 平台 | 关键词搜索 | 指定帖子ID | 二级评论 | 创作者主页 | 登录态缓存 | IP代理池 | 词云图 |
+|------|----------|-----------|---------|-----------|-----------|---------|-------|
+| 小红书 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 抖音 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 快手 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| B 站 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 微博 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 贴吧 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 知乎 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+### AI 分析能力（v2.0 新增）
+
+| 能力 | 说明 |
+|------|------|
+| LLM 去重筛选 | 语义识别重复内容和噪声，自动过滤广告/表情/无意义内容 |
+| 语义分类（12 类） | LLM 精准分类：食品健康、零食饮料、餐饮美食、生活家居、内容创作、效率工具、数据分析、电商选品、学习提升、社交运营、开发者工具、其他 |
+| AI 产品方案生成 | 每个痛点分类生成 2 个可落地的产品方案（名称/形态/功能/成本/变现） |
+| 报告持久化 | JSON 存储到 `data/reports/`，刷新不丢失 |
+| WebSocket 推送 | 采集完成后自动推送分析结果到前端 |
+| 飞书通知 | 采集摘要 + Top 5 痛点 + AI 方案建议 |
+
+### 前端分析报告面板
+
+- **6 个 KPI 指标卡片**：总记录、需求分类、高热度需求、高价值机会、AI 方案、Webhook 状态
+- **3 个可视化图表**：痛点分布柱状图、产品类型饼图、热度矩阵象限图
+- **AI 产品机会卡片**：Top 6 痛点，含优先级/描述/MVP 功能
+- **需求机会明细表**：9 列全维度数据，支持按优先级/热度筛选
+- **详情抽屉**：点击任意行查看代表内容摘录 + 匹配关键词 + AI 方案详情
+
+### 反检测强化（v2.0 新增）
+
+- 小红书 Cookie 全量注入（a1/gid/webId/web_session 等）
+- CDP 模式注入 stealth.min.js + 专用反检测 JS
+- 请求延迟随机化（0.5x ~ 1.5x 范围）
+- 浏览器与 HTTP 客户端 User-Agent 一致性修复
+
+---
 
 <strong>MediaCrawlerPro 重磅发布！开源不易，欢迎订阅支持</strong>
 
@@ -75,182 +120,249 @@
 - ✅ **自媒体视频下载器桌面端**（适合学习全栈开发）
 - ✅ **多平台首页信息流推荐**（HomeFeed）
 - ✅ **AI Agent Skill 支持**（[OpenClaw](https://openclaw.ai/) 🦞 / Claude Code / Cursor 一键安装，让 Agent 自动爬取数据）
-- [ ] **基于评论分析AI Agent正在开发中 🚀🚀**
 
 点击查看：[MediaCrawlerPro 项目主页](https://github.com/MediaCrawlerPro) 更多介绍
 
-
+---
 
 ## 🚀 快速开始
 
 > 💡 **如果这个项目对您有帮助，请给个 ⭐ Star 支持一下！**
 
-## 📋 前置依赖
+### 📋 前置依赖
 
-### 🚀 uv 安装（推荐）
-
-在进行下一步操作之前，请确保电脑上已经安装了 uv：
+#### 🚀 uv 安装（推荐）
 
 - **安装地址**：[uv 官方安装指南](https://docs.astral.sh/uv/getting-started/installation)
-- **验证安装**：终端输入命令 `uv --version`，如果正常显示版本号，证明已经安装成功
-- **推荐理由**：uv 是目前最强的 Python 包管理工具，速度快、依赖解析准确
+- **验证安装**：终端输入 `uv --version`，正常显示版本号即安装成功
 
-### 🟢 Node.js 安装
-
-项目依赖 Node.js，请前往官网下载安装：
+#### 🟢 Node.js 安装
 
 - **下载地址**：https://nodejs.org/en/download/
 - **版本要求**：>= 16.0.0
 
-### 📦 Python 包安装
+#### 📦 Python 包安装
 
 ```shell
-# 进入项目目录
 cd MediaCrawler
-
-# 使用 uv sync 命令来保证 python 版本和相关依赖包的一致性
 uv sync
 ```
 
-### 🌐 浏览器驱动安装（可选）
+#### 🌐 浏览器驱动安装（可选）
 
-> 如果使用默认的 CDP 模式（连接已有 Chrome 浏览器），**无需安装浏览器驱动**。仅在使用标准 Playwright 模式时需要安装。
+> 默认 CDP 模式无需安装。仅标准 Playwright 模式需要。
 
 ```shell
-# 仅在标准 Playwright 模式下需要安装浏览器驱动
 uv run playwright install
 ```
 
-### 🌍 Chrome 浏览器配置（推荐）
+#### 🌍 Chrome 浏览器配置（推荐）
 
-项目默认使用 CDP 模式连接用户已有的 Chrome 浏览器，可以复用浏览器已有的登录状态、Cookie、扩展等，**大幅降低平台风控检测风险**。
+CDP 模式复用已有 Chrome 登录状态，**大幅降低平台风控检测风险**。
 
-使用前需要：
+1. **安装最新版 Chrome**（版本 >= 144）
+2. 在 Chrome 地址栏输入 `chrome://inspect/#remote-debugging`，勾选 **"Allow remote debugging for this browser instance"**
+3. 确认 `127.0.0.1:9222` 可访问
 
-1. **安装最新版 Chrome 浏览器**（版本 >= 144），[下载地址](https://www.google.com/chrome/)
-2. **开启远程调试功能**：在 Chrome 地址栏输入 `chrome://inspect/#remote-debugging`，勾选 **"Allow remote debugging for this browser instance"**
-3. 页面显示 `Server running at: 127.0.0.1:9222` 表示已就绪
+> 不使用 CDP 时，在 `config/base_config.py` 中设置 `ENABLE_CDP_MODE = False`。
 
-> 💡 **提示**：运行爬虫后，Chrome 浏览器会弹出确认对话框，点击"接受"即可。程序会等待用户确认，60秒内操作完成即可。
->
-> 如果不想使用 CDP 模式，可以在 `config/base_config.py` 中设置 `ENABLE_CDP_MODE = False` 切换为标准 Playwright 模式。
-
-## 🚀 运行爬虫程序
+### 🖥️ WebUI 启动
 
 ```shell
-# 在 config/base_config.py 查看配置项目功能，写的有中文注释
+# 方式一：启动脚本
+.\启动WebUI.bat
 
-# 从配置文件中读取关键词搜索相关的帖子并爬取帖子信息与评论
+# 方式二：uv
+uv run python -m api.main
+
+# 方式三：uvicorn
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8081
+```
+
+启动后访问 `http://localhost:8081`。
+
+### ⌨️ 命令行运行
+
+```shell
+# 关键词搜索
 uv run main.py --platform xhs --lt qrcode --type search
 
-# 从配置文件中读取指定的帖子ID列表获取指定帖子的信息与评论信息
+# 指定帖子ID
 uv run main.py --platform xhs --lt qrcode --type detail
 
-# 打开对应APP扫二维码登录
-
-# 其他平台爬虫使用示例，执行下面的命令查看
+# 查看所有选项
 uv run main.py --help
 ```
 
-<details>
-<summary>🖥️ <strong>WebUI 可视化操作界面</strong></summary>
+---
 
-MediaCrawler 提供了基于 Web 的可视化操作界面，无需命令行也能轻松使用爬虫功能。
+## ⚙️ 配置说明
 
-#### 启动 WebUI 服务
+### 环境变量（`.env`）
 
-```shell
-# 启动 API 服务器（默认端口 8080）
-uv run uvicorn api.main:app --port 8080 --reload
+| 变量 | 说明 | 必填 |
+|------|------|------|
+| `FEISHU_WEBHOOK_URL` | 飞书群机器人 Webhook | 否 |
+| `LLM_API_KEY` | AI 模型 API Key | 否* |
+| `LLM_API_URL` | AI 模型接口地址（默认 DeepSeek） | 否 |
+| `LLM_MODEL` | AI 模型名称（默认 `deepseek-v4-flash`） | 否 |
+| `WEBUI_API_KEY` | WebUI 访问密码 | 否 |
+| `COOKIES` | 平台 Cookie 字符串 | Cookie 登录时必填 |
 
-# 或者使用模块方式启动
-uv run python -m api.main
+> *不配置 LLM_API_KEY 时，去重回退为 hash 去重，分类回退为关键词分词匹配，方案回退为内置模板。
+
+### 可选依赖
+
+以下依赖按需安装，缺失不阻塞启动：
+
+| 依赖 | 用途 |
+|------|------|
+| `sqlalchemy` + `aiosqlite` / `asyncmy` | SQLite / MySQL 存储 |
+| `openpyxl` | Excel 导出 |
+| `opencv-python` | 抖音滑块验证 |
+| `jieba` | 中文分词（备选分类器） |
+
+---
+
+## 💾 数据存储与导出
+
+支持 CSV / JSON / JSONL / Excel / SQLite / MySQL，数据保存在 `data/<platform>/` 目录。
+
+在 WebUI `需求库` 页面支持：
+- 预览数据（最多 100 条）
+- 单文件 / ZIP 批量下载
+- 全文关键词搜索
+- 触发 AI 需求分析
+
+---
+
+## 📊 AI 需求分析报告
+
+### 自动触发
+
+采集完成后自动执行完整分析流程，结果推送到分析报告页面和飞书群。
+
+### 手动生成
+
+1. 进入 `需求库` → 找到目标 JSONL 文件 → 点击 `分析报告`
+2. 确认后系统执行去重 → 分类 → 方案生成 → 推送
+
+### API 端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/data/analyze-report` | POST | 对指定文件执行分析 |
+| `/api/data/analysis-reports/latest` | GET | 获取最新报告 |
+| `/api/data/analysis-reports` | GET | 获取报告历史列表 |
+
+---
+
+## 🔔 飞书 Webhook 通知
+
+### 配置
+
+1. 飞书群 → 添加自定义机器人 → 复制 Webhook URL
+2. 在 WebUI `Webhook` 页面粘贴 URL 并保存 → 测试连接
+
+### 通知内容
+
+| 场景 | 消息 |
+|------|------|
+| 采集完成 | 平台、关键词、采集数量 |
+| 分析报告 | Top 5 痛点排行 + 1 条 AI 方案建议 |
+| 采集异常 | 非零退出码通知 |
+
+**分析报告示例：**
+
+```
+📊 需求发现报告
+平台：xhs  |  关键词：零食
+数据：27 条  |  6 个分类
+
+🔥 痛点 Top 5
+🔴 电商 & 选品工具 · 11次  ★4.61
+🟠 内容创作 & AI写作 · 9次  ★4.0
+🟡 自动化 & 效率工具 · 4次  ★4.11
+🟢 零食饮料 & 口味体验 · 4次  ★4.81
+⚪ 生活用品 & 家居购物 · 3次  ★3.2
+
+💡 AI方案建议：AI选品助手（小程序）
+
+🕐 2026-06-28 18:30  · 详情查看控制台
 ```
 
-启动成功后，访问 `http://localhost:8080` 即可打开 WebUI 界面。
+---
 
-#### WebUI 功能特性
+## 🛡️ 小红书反检测优化
 
-- 可视化配置爬虫参数（平台、登录方式、爬取类型等）
-- 实时查看爬虫运行状态和日志
-- 数据预览和导出
+| 优化项 | 说明 |
+|--------|------|
+| Cookie 全量注入 | 登录时注入所有 Cookie（a1/gid/webId/web_session），不再只注 web_session |
+| CDP 注入 stealth | CDP 模式下也注入 stealth.min.js + 专用反检测 JS |
+| 延迟随机化 | 请求间隔从固定值改为随机范围（0.5x ~ 1.5x） |
+| UA 一致性 | 浏览器和 HTTP 客户端使用相同 UA |
+| 反检测 JS | 修补 navigator.webdriver、plugins、chrome.runtime、cdc_ 痕迹 |
 
-#### 界面预览
+> **Cookie 登录注意**：复制浏览器中**完整的 Cookie 字符串**（含 a1、gid、web_session 等），不要只复制 web_session。
 
-<img src="docs/static/images/img_8.png" alt="WebUI 界面预览">
+---
 
-</details>
+## 📁 项目架构
 
-<details>
-<summary>🔗 <strong>使用 Python 原生 venv 管理环境（不推荐）</strong></summary>
-
-#### 创建并激活 Python 虚拟环境
-
-> 如果是爬取抖音和知乎，需要提前安装 nodejs 环境，版本大于等于：`16` 即可
-
-```shell
-# 进入项目根目录
-cd MediaCrawler
-
-# 创建虚拟环境
-# 我的 python 版本是：3.11 requirements.txt 中的库是基于这个版本的
-# 如果是其他 python 版本，可能 requirements.txt 中的库不兼容，需自行解决
-python -m venv venv
-
-# macOS & Linux 激活虚拟环境
-source venv/bin/activate
-
-# Windows 激活虚拟环境
-venv\Scripts\activate
+```
+MediaCrawler/
+├── api/                          # WebUI 后端
+│   ├── main.py                   # FastAPI 入口
+│   ├── routers/                  # 路由层
+│   │   ├── crawler.py            # 采集控制
+│   │   ├── data.py               # 数据管理 + 分析报告 API
+│   │   ├── dashboard.py          # 仪表盘统计
+│   │   ├── websocket.py          # WebSocket 推送
+│   │   ├── pipeline.py           # 一键需求发现
+│   │   └── ...
+│   ├── services/                 # 业务逻辑层
+│   │   ├── crawler_manager.py    # 采集进程管理 + 采集后分析
+│   │   ├── needs_analyzer.py     # LLM 分类 + 关键词匹配
+│   │   ├── solution_generator.py # AI 产品方案生成
+│   │   ├── dedup_filter.py       # LLM 去重筛选
+│   │   ├── report_store.py       # 报告持久化
+│   │   ├── pipeline_manager.py   # 一键需求发现调度
+│   │   └── data_stats.py         # 仪表盘数据统计
+│   ├── data/
+│   │   └── category_rules.json   # 12 个需求分类规则
+│   └── webui/                    # 前端
+│       ├── index.html            # SPA 页面
+│       ├── dashboard.js          # 前端逻辑（分析报告渲染）
+│       └── dashboard.css         # 样式
+├── media_platform/               # 各平台爬虫
+│   ├── xhs/                      # 小红书（含反检测）
+│   ├── douyin/                   # 抖音
+│   ├── kuaishou/                 # 快手
+│   ├── bilibili/                 # B站
+│   ├── weibo/                    # 微博
+│   ├── tieba/                    # 贴吧
+│   └── zhihu/                    # 知乎
+├── integrations/                 # 集成模块
+│   ├── feishu_webhook.py         # 飞书 Webhook 通知
+│   └── demand_report/            # 自动需求报告
+├── store/                        # 数据存储层
+├── database/                     # 数据库层（sqlalchemy 可选）
+├── config/                       # 配置
+├── tools/                        # 工具函数
+├── data/                         # 采集数据 + 分析报告
+│   ├── <platform>/jsonl/         # 各平台 JSONL 数据
+│   └── reports/                  # 分析报告 JSON
+└── main.py                       # CLI 入口
 ```
 
-#### 安装依赖库
-
-```shell
-pip install -r requirements.txt
-```
-
-#### 安装 playwright 浏览器驱动
-
-```shell
-playwright install
-```
-
-#### 运行爬虫程序（原生环境）
-
-```shell
-# 项目默认是没有开启评论爬取模式，如需评论请在 config/base_config.py 中的 ENABLE_GET_COMMENTS 变量修改
-# 一些其他支持项，也可以在 config/base_config.py 查看功能，写的有中文注释
-
-# 从配置文件中读取关键词搜索相关的帖子并爬取帖子信息与评论
-python main.py --platform xhs --lt qrcode --type search
-
-# 从配置文件中读取指定的帖子ID列表获取指定帖子的信息与评论信息
-python main.py --platform xhs --lt qrcode --type detail
-
-# 打开对应APP扫二维码登录
-
-# 其他平台爬虫使用示例，执行下面的命令查看
-python main.py --help
-```
-
-</details>
-
-
-## 💾 数据保存
-
-MediaCrawler 支持多种数据存储方式，包括 CSV、JSON、JSONL、Excel、SQLite 和 MySQL 数据库。
-
-📖 **详细使用说明请查看：[数据存储指南](docs/data_storage_guide.md)**
-
-
-[🚀 MediaCrawlerPro 重磅发布 🚀！更多的功能，更好的架构设计！开源不易，欢迎订阅支持！](https://github.com/MediaCrawlerPro)
-
+---
 
 ## 💬 交流群组
+
 - **微信交流群**：[点击加入](https://nanmicoder.github.io/MediaCrawler/%E5%BE%AE%E4%BF%A1%E4%BA%A4%E6%B5%81%E7%BE%A4.html)
 - **B站账号**：[关注我](https://space.bilibili.com/434377496)，分享AI与爬虫技术知识
 
+---
 
 ## 💰 赞助商展示
 
@@ -262,12 +374,12 @@ TikHub.io 提供 900+ 高稳定性数据接口，覆盖 TK、DY、XHS、Y2B、In
 <br>
 <br>
 
-<a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=mei%27da%27c%27rmeidacrawler">
+<a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=mei'da'c'rmeidacrawler">
 <img width="500" alt="Atlas Cloud" src="docs/static/images/atlas_cloud_logo_black.png#gh-light-mode-only">
 <img width="500" alt="Atlas Cloud" src="docs/static/images/atlas_cloud_logo_white.png#gh-dark-mode-only">
 </a>
 <br>
-<a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=mei%27da%27c%27rmeidacrawler">Atlas Cloud</a> 是一个全模态 AI 推理平台，让开发者通过统一的 AI API 访问视频生成、图像生成和 LLM API，无需分别维护多个厂商集成，即可调用 300+ 精选模型。Atlas Cloud 最新推出 <a href="https://www.atlascloud.ai/console/coding-plan">coding plan 优惠</a>，为开发者提供更具性价比的 API 访问预算。
+<a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=mei'da'c'rmeidacrawler">Atlas Cloud</a> 是一个全模态 AI 推理平台，让开发者通过统一的 AI API 访问视频生成、图像生成和 LLM API，无需分别维护多个厂商集成，即可调用 300+ 精选模型。Atlas Cloud 最新推出 <a href="https://www.atlascloud.ai/console/coding-plan">coding plan 优惠</a>，为开发者提供更具性价比的 API 访问预算。
 
 ---
 
@@ -278,6 +390,7 @@ TikHub.io 提供 900+ 高稳定性数据接口，覆盖 TK、DY、XHS、Y2B、In
 **联系方式**：
 - 微信：`relakkes`
 - 邮箱：`relakkes@gmail.com`
+
 ---
 
 ## ☕ 请作者喝杯咖啡
@@ -306,17 +419,21 @@ TikHub.io 提供 900+ 高稳定性数据接口，覆盖 TK、DY、XHS、Y2B、In
 ---
 
 ## 📚 其他
+
+- **官方使用文档**：[README-官方使用文档.md](README-官方使用文档.md)
 - **常见问题**：[MediaCrawler 完整文档](https://nanmicoder.github.io/MediaCrawler/)
 - **爬虫入门教程**：[CrawlerTutorial 免费教程](https://github.com/NanmiCoder/CrawlerTutorial)
 - **新闻爬虫开源项目**：[NewsCrawlerCollection](https://github.com/NanmiCoder/NewsCrawlerCollection)
 
+---
 
 ## ⭐ Star 趋势图
 
-如果这个项目对您有帮助，请给个 ⭐ Star 支持一下，让更多的人看到 MediaCrawler！
+如果这个项目对您有帮助，请给个 ⭐ Star 支持一下！
 
 [![Star History Chart](https://api.star-history.com/svg?repos=NanmiCoder/MediaCrawler&type=Date)](https://star-history.com/#NanmiCoder/MediaCrawler&Date)
 
+---
 
 ## 📚 参考
 
@@ -325,15 +442,16 @@ TikHub.io 提供 900+ 高稳定性数据接口，覆盖 TK、DY、XHS、Y2B、In
 - **短信转发**：[SmsForwarder 参考仓库](https://github.com/pppscn/SmsForwarder)
 - **内网穿透工具**：[ngrok 官方文档](https://ngrok.com/docs/)
 
+---
 
 # 免责声明
-<div id="disclaimer"> 
+<div id="disclaimer">
 
 ## 1. 项目目的与性质
-本项目（以下简称“本项目”）是作为一个技术研究与学习工具而创建的，旨在探索和学习网络数据采集技术。本项目专注于自媒体平台的数据爬取技术研究，旨在提供给学习者和研究者作为技术交流之用。
+本项目（以下简称"本项目"）是作为一个技术研究与学习工具而创建的，旨在探索和学习网络数据采集技术。本项目专注于自媒体平台的数据爬取技术研究，旨在提供给学习者和研究者作为技术交流之用。
 
 ## 2. 法律合规性声明
-本项目开发者（以下简称“开发者”）郑重提醒用户在下载、安装和使用本项目时，严格遵守中华人民共和国相关法律法规，包括但不限于《中华人民共和国网络安全法》、《中华人民共和国反间谍法》等所有适用的国家法律和政策。用户应自行承担一切因使用本项目而可能引起的法律责任。
+本项目开发者（以下简称"开发者"）郑重提醒用户在下载、安装和使用本项目时，严格遵守中华人民共和国相关法律法规，包括但不限于《中华人民共和国网络安全法》、《中华人民共和国反间谍法》等所有适用的国家法律和政策。用户应自行承担一切因使用本项目而可能引起的法律责任。
 
 ## 3. 使用目的限制
 本项目严禁用于任何非法目的或非学习、非研究的商业行为。本项目不得用于任何形式的非法侵入他人计算机系统，不得用于任何侵犯他人知识产权或其他合法权益的行为。用户应保证其使用本项目的目的纯属个人学习和技术研究，不得用于任何形式的非法活动。

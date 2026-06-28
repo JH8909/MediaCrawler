@@ -16,6 +16,7 @@ import asyncio
 import json
 import os
 import subprocess
+import traceback
 import time
 from datetime import datetime
 from pathlib import Path
@@ -39,7 +40,8 @@ class PipelineManager:
 
     def __init__(self):
         self._lock = asyncio.Lock()
-        self.status = "idle"  # idle | running | completed | failed
+        self._cancel_event = asyncio.Event()
+        self.status = "idle"  # idle | running | completed | failed | cancelled
         self.started_at: Optional[datetime] = None
         self.completed_at: Optional[datetime] = None
         self.current_plan: Optional[Dict[str, Any]] = None
@@ -60,6 +62,11 @@ class PipelineManager:
         """Clear all stored logs."""
         self._logs = []
 
+    async def stop(self) -> None:
+        """Request pipeline cancellation."""
+        self._cancel_event.set()
+        self._log("Cancellation requested, will stop after current task completes")
+
     async def start(
         self,
         platforms: Optional[List[str]] = None,
@@ -78,6 +85,8 @@ class PipelineManager:
             self._log("Pipeline started")
 
         try:
+            self._cancel_event.clear()
+
             # Step 1: Generate keyword plans
             self._log(f"Generating {keyword_count} keyword plans (offset={keyword_offset})...")
             plans = generate_keyword_plans(count=keyword_count, offset=keyword_offset)
@@ -92,18 +101,37 @@ class PipelineManager:
             completed_tasks = 0
 
             for platform in platforms:
+                if self._cancel_event.is_set():
+                    self._log("Pipeline cancelled by user")
+                    break
                 for plan in plans:
+                    if self._cancel_event.is_set():
+                        self._log("Pipeline cancelled by user")
+                        break
                     self._log(f"[{platform}] Crawling: {plan.keyword}")
                     try:
                         new_files = await self._run_single_crawl(platform, plan, max_notes)
                         all_new_files.extend(new_files)
+                    except asyncio.CancelledError:
+                        self._log(f"[{platform}] Cancelled: {plan.keyword}")
+                        raise
                     except Exception as exc:
                         self._log(f"[{platform}] Failed: {plan.keyword} - {exc}")
 
                     completed_tasks += 1
                     self._log(f"Progress: {completed_tasks}/{total_tasks}")
+                if self._cancel_event.is_set():
+                    break
 
-            if not all_new_files:
+            if self._cancel_event.is_set():
+                result = {
+                    "status": "cancelled",
+                    "total_files": len(all_new_files),
+                    "message": "Pipeline was cancelled by user",
+                    "files": [str(f.relative_to(PROJECT_ROOT)) for f in all_new_files],
+                    "analysis": None,
+                }
+            elif not all_new_files:
                 self._log("No new data files found, analysis skipped")
                 result = {
                     "status": "completed",
@@ -122,6 +150,7 @@ class PipelineManager:
                         analysis_results.append(result)
                     except Exception as exc:
                         self._log(f"Analysis failed for {file_path.name}: {exc}")
+                        self._log(traceback.format_exc())
 
                 # Step 4: Send notification (handled by analyze endpoint)
                 self._log(f"Analysis complete: {len(analysis_results)} files processed")
@@ -239,6 +268,7 @@ class PipelineManager:
         import json as _json
         from api.services.needs_analyzer import analyze_records
         from api.services.solution_generator import generate_all_solutions
+        from api.services.dedup_filter import llm_dedup_records
 
         # Load records
         records = []
@@ -251,9 +281,15 @@ class PipelineManager:
         if not records:
             return {"file": str(file_path), "total": 0, "categories": 0}
 
+        # Step 0: LLM dedup before classification
+        orig_count = len(records)
+        deduped_records, removed_count = llm_dedup_records(records)
+        if removed_count > 0:
+            self._log(f"  LLM dedup: {orig_count} -> {len(deduped_records)} ({removed_count} removed)")
+
         # Classify and aggregate (run in thread to avoid blocking event loop)
-        self._log(f"  Analyzing {len(records)} records from {file_path.name}...")
-        analysis = await asyncio.to_thread(analyze_records, records)
+        self._log(f"  Analyzing {len(deduped_records)} records from {file_path.name}...")
+        analysis = await asyncio.to_thread(analyze_records, deduped_records)
         agg = analysis.get("aggregation", [])
         classified = analysis.get("classified_records", [])
         self._log(f"  Found {len(agg)} categories, {len(classified)} classified records")
@@ -274,30 +310,61 @@ class PipelineManager:
             except Exception as exc:
                 self._log(f"  Solution generation failed: {exc}")
 
+        # Load category rules (used by both webhook and report persistence)
+        cat_rules = {}
+        rules_path = Path(__file__).resolve().parents[1] / "data" / "category_rules.json"
+        if rules_path.exists():
+            try:
+                with open(rules_path, "r", encoding="utf-8") as f_rules:
+                    cat_rules = _json.load(f_rules)
+            except Exception:
+                pass
+
+        platform_name = file_path.parent.parent.name
+        first_keyword = records[0].get("source_keyword", "") if records else ""
+
         # Send Feishu notification (run in thread — HTTP request)
         webhook_sent = False
         try:
             from integrations.feishu_webhook import send_demand_report, get_webhook_url
             wu = get_webhook_url()
             if wu and agg:
-                platform_name = file_path.parent.parent.name
-                first_keyword = records[0].get("source_keyword", "") if records else ""
                 webhook_sent = await asyncio.to_thread(
                     send_demand_report,
                     aggregation=agg,
                     solutions_data=solutions_data,
                     keyword=first_keyword,
                     platform=platform_name,
-                    total=len(records),
+                    total=len(deduped_records),
+                    classified_records=classified,
+                    category_rules=cat_rules,
                     webhook_url=wu,
                 )
                 self._log(f"  Feishu analysis report sent: {webhook_sent}")
         except Exception as exc:
             self._log(f"  Feishu notification failed: {exc}")
 
+        # Persist report + push to frontend via WebSocket (always save)
+        try:
+            from api.services.report_store import save_report
+            from api.routers.websocket import broadcast_analysis_report
+            report_data = save_report(
+                platform=platform_name,
+                keyword=first_keyword,
+                total=len(deduped_records),
+                aggregation=agg or [],
+                classified_records=classified or [],
+                solutions_data=solutions_data or [],
+                webhook_sent=webhook_sent,
+            )
+            await broadcast_analysis_report(report_data)
+            self._log(f"  Report saved & pushed: {len(agg or [])} categories")
+        except Exception as rpt_exc:
+            self._log(f"  Report save/push: {rpt_exc}")
+
         return {
             "file": str(file_path.relative_to(PROJECT_ROOT)),
-            "total": len(records),
+            "total": len(deduped_records),
             "categories": len(agg),
             "aggregation": agg[:20],
             "solutions": len(solutions_data),

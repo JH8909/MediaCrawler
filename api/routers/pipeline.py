@@ -63,6 +63,6 @@ async def stop_pipeline():
     """Stop running pipeline"""
     if pipeline_manager.status != "running":
         raise HTTPException(status_code=400, detail="No pipeline is running")
-    # For now, the pipeline runs synchronously in the event loop
-    # A full implementation would use asyncio tasks for cancellation
-    return {"status": "ok", "message": "Stop requested (will complete current task)"}
+
+    await pipeline_manager.stop()
+    return {"status": "ok", "message": "Stop requested, pipeline will stop after current task completes"}
