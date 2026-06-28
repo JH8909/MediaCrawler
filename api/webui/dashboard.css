@@ -1888,8 +1888,9 @@ dialog::backdrop {
 .v5-table td small { color:var(--text-disabled); }
 .v5-table tbody tr:hover { background:#fbfdff; }
 
-.v5-insight-row { display:grid; grid-template-columns:.85fr 1.15fr; gap:14px; margin-top:14px; }
+.v5-insight-row { display:grid; grid-template-columns:1fr; gap:14px; margin-top:14px; }
 .v5-insight-card { padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:20px; box-shadow:0 12px 32px rgba(20,32,56,.07); }
+.v5-comp-full { grid-column:1/-1; }
 .v5-insight-card h2 { font-size:16px; margin:0 0 14px; font-weight:950; }
 .v5-todo { display:grid; gap:10px; }
 .v5-todo-item { display:grid; grid-template-columns:30px 1fr; gap:10px; border:1px solid var(--line); background:#fbfcff; border-radius:14px; padding:11px; }
@@ -1919,22 +1920,9 @@ dialog::backdrop {
 .v5-gap-pill b { display:block; font-size:13px; margin-bottom:4px; }
 .v5-gap-pill span { display:block; color:var(--muted); font-size:12px; line-height:1.45; }
 
-/* V5 竞品分析 — 竞争定位图 */
-.v5-comp-section { margin-bottom:16px; }
-.v5-comp-section:last-child { margin-bottom:0; }
-.v5-pos-map { height:200px; border:1px dashed #cfd8e7; border-radius:17px; position:relative; background:linear-gradient(#edf2f8 1px,transparent 1px) 0 50%/100% 1px no-repeat,linear-gradient(90deg,#edf2f8 1px,transparent 1px) 50% 0/1px 100% no-repeat,#fff; }
-.v5-pos-axes { position:absolute; inset:0; }
-.v5-pos-yl { position:absolute; left:8px; top:6px; font-size:11px; color:var(--text-disabled); }
-.v5-pos-xb { position:absolute; right:8px; bottom:6px; font-size:11px; color:var(--text-disabled); }
-.v5-pos-dot { position:absolute; border-radius:50%; border:3px solid #fff; box-shadow:0 6px 16px rgba(0,0,0,.18); cursor:pointer; }
-.v5-pos-dot.us { border-color:#fff; box-shadow:0 0 0 4px rgba(56,103,255,.35),0 6px 16px rgba(0,0,0,.18); }
-.v5-pos-dot.us:after { content:""; position:absolute; inset:-2px; border-radius:50%; border:2px dashed rgba(56,103,255,.5); animation:v5-pulse 2s infinite; }
-@keyframes v5-pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.35);opacity:.25} }
-.v5-pos-label { position:absolute; font-size:11px; font-weight:900; color:#34445e; white-space:nowrap; transform:translate(-50%,18px); text-align:center; }
-.v5-pos-label.us { color:var(--blue); font-size:12px; }
-.v5-pos-legend { display:flex; gap:14px; margin-top:10px; flex-wrap:wrap; }
-.v5-pos-leg { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); }
-.v5-pos-leg span { width:10px; height:10px; border-radius:50%; }
+/* V5 竞品分析 — 横向布局 */
+.v5-comp-row-layout { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.v5-comp-row-layout .v5-comp-section:last-child { grid-column:1/-1; }
 
 /* V5 竞品分析 — 功能热力图 */
 .v5-heatmap-wrap { overflow-x:auto; }
@@ -1972,9 +1960,11 @@ dialog::backdrop {
   .v5-insight-row { grid-template-columns:1fr; }
   .v5-comp-visual { grid-template-columns:1fr; }
   .v5-funnel { grid-template-columns:1fr 1fr; }
+  .v5-comp-row-layout { grid-template-columns:1fr; }
 }
 @media (max-width:760px) {
   .v5-funnel { grid-template-columns:1fr; }
   .v5-table { min-width:980px; }
   .v5-comp-row { grid-template-columns:80px 1fr 32px; }
+  .v5-comp-row-layout { grid-template-columns:1fr; }
 }

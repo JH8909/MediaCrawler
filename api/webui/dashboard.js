@@ -444,7 +444,6 @@ function renderAnalysisReport(report) {
   renderV5Funnel(total, classifiedCount, agg.length, solutionsCount);
   renderV5Bars(agg);
   renderV5Matrix(agg);
-  renderV5Todo(agg, suf);
   renderV5Competitive(agg);
   renderV5Table(rows);
   bindV5Drawer();
@@ -545,80 +544,14 @@ function renderV5Matrix(agg) {
   }
 }
 
-function renderV5Todo(agg, suf) {
-  var container = document.getElementById('v5Todo');
-  if (!container) return;
-  var todos = [];
-  var topName = agg.length ? (agg[0].category || '') : '';
-
-  if (topName) {
-    todos.push({ b: '先做"' + topName + '"假门页', s: '验证用户是否愿意上传关键词、留资、获取选品报告。' });
-  }
-  if (suf && suf.recommendations && suf.recommendations.length) {
-    suf.recommendations.slice(0, 2).forEach(function(r) {
-      todos.push({ b: r.length > 30 ? r.substring(0, 30) + '…' : r, s: r });
-    });
-  } else {
-    var remaining = Math.max(10, 100 - (suf ? (suf.total_records || 0) : 0));
-    todos.push({ b: '继续采集到100条有效需求', s: '重点补充' + (topName || '相关') + '方向，当前还需' + remaining + '条。' });
-    todos.push({ b: '给Top3痛点补证据链', s: '每个需求簇至少保留5-10条代表性原始评论。' });
-  }
-
-  container.innerHTML = todos.slice(0, 3).map(function(todo, i) {
-    return '<div class="v5-todo-item"><div class="v5-todo-no">' + (i + 1) + '</div><div><b>' + escapeHtml(todo.b) + '</b><span>' + escapeHtml(todo.s) + '</span></div></div>';
-  }).join('');
-}
-
 function renderV5Competitive(agg) {
-  // ── 1. 竞争定位图 ──
-  renderV5PosMap(agg);
-  // ── 2. 功能热力图 ──
   renderV5Heatmap(agg);
-  // ── 3. 能力对比条形图 ──
   renderV5CapBars(agg);
-  // ── 4. 竞品强项 vs 我们强项 ──
   renderV5StrengthGrid(agg);
-  // ── 5. 3个核心缺口 ──
   renderV5CoreGaps(agg);
 
   var row = document.getElementById('v5InsightRow');
   if (row) row.style.display = '';
-}
-
-function renderV5PosMap(agg) {
-  var map = document.getElementById('v5PosMap');
-  if (!map) return;
-  // Remove old dots
-  map.querySelectorAll('.v5-pos-dot,.v5-pos-label,.v5-pos-legend').forEach(function(e) { e.remove(); });
-
-  // Position data: {name, trade (x), decision (y), cls}
-  var dots = [
-    { name: '我们 (MediaCrawler)', trade: 62, decision: 84, cls: 'us', color: '#3867ff' },
-    { name: '贝壳/链家', trade: 90, decision: 55, cls: '', color: '#18a766' },
-    { name: '安居客', trade: 82, decision: 38, cls: '', color: '#ffad21' },
-    { name: '普通计算器', trade: 22, decision: 12, cls: '', color: '#9aa7ba' },
-  ];
-
-  dots.forEach(function(d) {
-    var dot = document.createElement('span');
-    dot.className = 'v5-pos-dot ' + d.cls;
-    var size = d.cls === 'us' ? 22 : 16;
-    dot.style.cssText = 'left:' + d.trade + '%;top:' + (100 - d.decision) + '%;width:' + size + 'px;height:' + size + 'px;background:' + d.color;
-    dot.title = d.name + ' (交易:' + d.trade + ' 决策:' + d.decision + ')';
-    map.appendChild(dot);
-
-    var label = document.createElement('span');
-    label.className = 'v5-pos-label ' + d.cls;
-    label.style.cssText = 'left:' + d.trade + '%;top:' + (100 - d.decision) + '%';
-    label.textContent = d.name;
-    map.appendChild(label);
-  });
-
-  // Legend
-  var legend = document.createElement('div');
-  legend.className = 'v5-pos-legend';
-  legend.innerHTML = '<span class="v5-pos-leg"><span style="background:#3867ff"></span>我们</span><span class="v5-pos-leg"><span style="background:#18a766"></span>贝壳/链家</span><span class="v5-pos-leg"><span style="background:#ffad21"></span>安居客</span><span class="v5-pos-leg"><span style="background:#9aa7ba"></span>普通计算器</span>';
-  map.appendChild(legend);
 }
 
 function renderV5Heatmap(agg) {
