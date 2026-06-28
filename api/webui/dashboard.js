@@ -223,6 +223,7 @@ async function startCrawler() {
   if (!window.confirm("将正式启动本机采集任务。请确认只采集公开内容，并已遵守目标平台规则。")) {
     return;
   }
+  clearAllLogs();
   try {
     const { confirm_public: _confirmPublic, ...requestPayload } = payload;
     await api("/api/crawler/start", { method: "POST", body: JSON.stringify(requestPayload) });
@@ -471,6 +472,16 @@ function appendLocalLog(level, message) {
   renderLogs();
 }
 
+function clearAllLogs() {
+  state.logs = [];
+  state.crawlerLogs = [];
+  state.pipelineLogs = [];
+  if (state.runner) state.runner.logs = [];
+  renderLogs();
+  api("/api/crawler/logs/clear", { method: "POST" }).catch(() => {});
+  api("/api/pipeline/logs/clear", { method: "POST" }).catch(() => {});
+}
+
 function normalizePipelineLog(line) {
   const text = String(line || "");
   const match = text.match(/^\[([^\]]+)\]\s*(.*)$/);
@@ -586,10 +597,7 @@ function bindEvents() {
     appendLocalLog("success", "命令预览已复制到剪贴板");
   });
   $("clearLogsBtn").addEventListener("click", () => {
-    state.logs = [];
-    state.crawlerLogs = [];
-    if (state.runner) state.runner.logs = [];
-    renderLogs();
+    clearAllLogs();
   });
   $("clearAnalysisReportBtn")?.addEventListener("click", () => {
     state.analysisReport = null;
@@ -634,6 +642,13 @@ function bindEvents() {
   $("startPipelineBtn")?.addEventListener("click", startPipeline);
   $("refreshPipelineBtn")?.addEventListener("click", loadPipelineStatus);
   $("closeSolutionDialogBtn")?.addEventListener("click", function() { document.getElementById('solutionDialog').close(); });
+  var solutionDialog = document.getElementById('solutionDialog');
+  if (solutionDialog) {
+    solutionDialog.addEventListener('click', function(ev) {
+      if (ev.target === solutionDialog) solutionDialog.close();
+    });
+    solutionDialog.addEventListener('cancel', function(ev) { solutionDialog.close(); });
+  }
   setupFilterButtons();
   ["logSource", "errorsOnly", "autoScroll"].forEach((id) => $(id).addEventListener("change", renderLogs));
   const workspace = document.querySelector(".workspace");
@@ -866,6 +881,38 @@ async function loadPipelineStatus() {
     if (data.last_result && data.last_result.total_files > 0) {
       document.getElementById('pipelineResult').innerHTML = '<div class="report-stat" style="display:inline-block;padding:12px 16px;border:1px solid var(--line);border-radius:8px;background:var(--surface-alt)"><span>采集文件</span><strong>' + data.last_result.total_files + '</strong></div>';
     }
+    if (data.status === 'completed' && data.last_result && Array.isArray(data.last_result.analysis) && data.last_result.analysis.length > 0) {
+      var analysisList = data.last_result.analysis;
+      var mergedAgg = {};
+      var mergedSolutions = [];
+      var totalRecords = 0;
+      var anyWebhookSent = false;
+      for (var i = 0; i < analysisList.length; i++) {
+        var a = analysisList[i];
+        totalRecords += a.total || 0;
+        if (a.webhook_sent) anyWebhookSent = true;
+        if (Array.isArray(a.solutions_data)) mergedSolutions = mergedSolutions.concat(a.solutions_data);
+        if (Array.isArray(a.aggregation)) {
+          for (var j = 0; j < a.aggregation.length; j++) {
+            var item = a.aggregation[j];
+            var cat = item.category || item.name || '未分类';
+            if (!mergedAgg[cat]) mergedAgg[cat] = { category: cat, count: 0 };
+            mergedAgg[cat].count += Number(item.count || item.total || 0);
+          }
+        }
+      }
+      var aggArray = Object.values(mergedAgg).sort(function(x, y) { return y.count - x.count; });
+      state.analysisReport = {
+        total: totalRecords,
+        categories: aggArray.length,
+        aggregation: aggArray,
+        solutions: mergedSolutions.length,
+        solutions_data: mergedSolutions,
+        webhook_sent: anyWebhookSent,
+        generated_at: new Date().toLocaleString('zh-CN', { hour12: false }),
+      };
+      renderAnalysisReport();
+    }
     if (data.status === 'running' && !pipelinePollTimer) {
       startPipelinePolling();
     }
@@ -896,6 +943,7 @@ async function startPipeline() {
   var maxNotes = parseInt(document.getElementById('pipelineMaxNotes').value) || 15;
   if (platforms.length === 0) { appendLocalLog('warning', '请选择平台'); return; }
   if (!confirm('启动自动需求发现\n平台: ' + platforms.join(', ') + '\n关键词数: ' + keywordCount)) {return;}
+  clearAllLogs();
   try {
     appendLocalLog('info', '一键需求发现启动...');
     var data = await api('/api/pipeline/start', {

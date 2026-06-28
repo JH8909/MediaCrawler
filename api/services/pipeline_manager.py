@@ -56,6 +56,10 @@ class PipelineManager:
     def logs(self) -> List[str]:
         return self._logs[-200:]  # Keep last 200 lines
 
+    def clear_logs(self) -> None:
+        """Clear all stored logs."""
+        self._logs = []
+
     async def start(
         self,
         platforms: Optional[List[str]] = None,
@@ -271,13 +275,14 @@ class PipelineManager:
                 self._log(f"  Solution generation failed: {exc}")
 
         # Send Feishu notification (run in thread — HTTP request)
+        webhook_sent = False
         try:
             from integrations.feishu_webhook import send_demand_report, get_webhook_url
             wu = get_webhook_url()
             if wu and agg:
                 platform_name = file_path.parent.parent.name
                 first_keyword = records[0].get("source_keyword", "") if records else ""
-                sent = await asyncio.to_thread(
+                webhook_sent = await asyncio.to_thread(
                     send_demand_report,
                     aggregation=agg,
                     solutions_data=solutions_data,
@@ -286,7 +291,7 @@ class PipelineManager:
                     total=len(records),
                     webhook_url=wu,
                 )
-                self._log(f"  Feishu analysis report sent: {sent}")
+                self._log(f"  Feishu analysis report sent: {webhook_sent}")
         except Exception as exc:
             self._log(f"  Feishu notification failed: {exc}")
 
@@ -294,8 +299,10 @@ class PipelineManager:
             "file": str(file_path.relative_to(PROJECT_ROOT)),
             "total": len(records),
             "categories": len(agg),
-            "aggregation": agg[:8],
+            "aggregation": agg[:20],
             "solutions": len(solutions_data),
+            "solutions_data": solutions_data,
+            "webhook_sent": webhook_sent,
         }
 
 

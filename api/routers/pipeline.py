@@ -51,6 +51,13 @@ async def get_pipeline_status():
     return pipeline_manager.get_status()
 
 
+@router.post("/logs/clear")
+async def clear_pipeline_logs():
+    """Clear all stored pipeline logs"""
+    pipeline_manager.clear_logs()
+    return {"status": "ok", "message": "Pipeline logs cleared"}
+
+
 @router.post("/stop")
 async def stop_pipeline():
     """Stop running pipeline"""

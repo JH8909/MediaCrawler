@@ -1150,6 +1150,8 @@ dialog::backdrop {
   box-shadow: var(--shadow-lg);
   max-width: 560px;
   width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
   animation: dialog-in 240ms var(--ease);
 }
 .solution-dialog::backdrop {
@@ -1163,10 +1165,20 @@ dialog::backdrop {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 2;
 }
 .solution-dialog-head h2 {
   margin: 0;
   font-size: 15px;
+}
+#closeSolutionDialogBtn {
+  cursor: pointer;
+  pointer-events: auto;
+  position: relative;
+  z-index: 3;
 }
 #solutionDetailContent {
   padding: 18px;

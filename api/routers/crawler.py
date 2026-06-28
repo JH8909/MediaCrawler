@@ -61,3 +61,10 @@ async def get_logs(limit: int = 100):
     """Get recent logs"""
     logs = crawler_manager.logs[-limit:] if limit > 0 else crawler_manager.logs
     return {"logs": [log.model_dump() for log in logs]}
+
+
+@router.post("/logs/clear")
+async def clear_logs():
+    """Clear all stored logs"""
+    crawler_manager.clear_logs()
+    return {"status": "ok", "message": "Logs cleared"}

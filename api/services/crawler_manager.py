@@ -49,6 +49,17 @@ class CrawlerManager:
     def logs(self) -> List[LogEntry]:
         return self._logs
 
+    def clear_logs(self) -> None:
+        """Clear all stored logs and reset log id counter."""
+        self._logs = []
+        self._log_id = 0
+        if self._log_queue is not None:
+            try:
+                while True:
+                    self._log_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+
     def get_log_queue(self) -> asyncio.Queue:
         """Get or create log queue"""
         if self._log_queue is None:
