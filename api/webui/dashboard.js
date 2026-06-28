@@ -6,8 +6,10 @@ const state = {
   files: [],
   logs: [],
   crawlerLogs: [],
+  pipelineLogs: [],
   runner: null,
   crawlerStatus: null,
+  analysisReport: null,
   lastDryRunTaskId: "",
   lastDryRunFilePath: "",
 };
@@ -47,45 +49,26 @@ async function api(path, options = {}) {
   return data;
 }
 
-function tickClock() {
-  $("clock").textContent = new Date().toLocaleString("zh-CN", { hour12: false });
-}
+let pipelinePollTimer = null;
 
 async function loadEnv() {
-  const parts = [];
-  try {
-    const [base, feishu] = await Promise.all([
-      api("/api/env/check").catch((error) => ({ success: false, message: error.message })),
-      api("/api/feishu/env").catch((error) => ({ ready: false, env: {}, error: error.message })),
-    ]);
-    parts.push("<span>环境检查：</span>");
-    parts.push(`<span class="check ${base.success ? "" : "bad"}">Python ${base.success ? "正常" : "异常"}</span>`);
-    parts.push('<span class="check">网络连接 正常</span>');
-    parts.push(`<span class="check ${feishu.ready ? "" : "bad"}">Bitable ${feishu.ready ? "可达" : "未配置"}</span>`);
-  } catch (error) {
-    parts.push(`<span>环境检查：</span><span class="check bad">${escapeHtml(error.message)}</span>`);
-  }
-  $("envChecks").innerHTML = parts.join("");
+  // Merged into loadConfig() — environment checks now live in Settings → 配置检查
+  return loadConfig();
 }
 
 async function loadConfig() {
-  const [base, feishu, platforms, options] = await Promise.all([
+  const [base, webhook, platforms, options] = await Promise.all([
     api("/api/env/check").catch((error) => ({ success: false, message: error.message })),
-    api("/api/feishu/env").catch((error) => ({ ready: false, env: {}, error: error.message })),
+    api("/api/feishu/webhook/status").catch(() => ({ configured: false })),
     api("/api/config/platforms").catch(() => ({ platforms: [] })),
     api("/api/config/options").catch(() => ({ login_types: [], crawler_types: [], save_options: [] })),
   ]);
-  const envItems = Object.entries(feishu.env || {}).map(([key, value]) => ({
-    label: key,
-    value,
-    ok: value === "SET",
-  }));
   const items = [
-    { label: "MediaCrawler 环境", value: base.success ? "正常" : (base.message || "异常"), ok: Boolean(base.success) },
-    { label: "飞书多维表格", value: feishu.ready ? "可达" : "未配置完整", ok: Boolean(feishu.ready) },
+    { label: "Python 运行环境", value: base.success ? "正常" : (base.message || "异常"), ok: Boolean(base.success) },
+    { label: "网络连接", value: "正常", ok: true },
+    { label: "Webhook 通知", value: webhook.configured ? "已配置" : "未配置", ok: Boolean(webhook.configured) },
     { label: "支持平台", value: `${platforms.platforms?.length || 0} 个`, ok: true },
     { label: "保存格式", value: `${options.save_options?.length || 0} 种`, ok: true },
-    ...envItems,
   ];
   $("configGrid").innerHTML = items.map((item) => `
     <div class="config-item ${item.ok ? "ok" : "bad"}">
@@ -270,6 +253,7 @@ function crawlerPayload() {
     platform: form.get("platform"),
     login_type: form.get("login_type"),
     crawler_type: form.get("crawler_type"),
+    industry_type: form.get("industry_type"),
     keywords: String(form.get("keywords") || "").trim(),
     specified_ids: String(form.get("specified_ids") || "").trim(),
     creator_ids: String(form.get("creator_ids") || "").trim(),
@@ -320,10 +304,9 @@ function renderDataFiles() {
     return;
   }
   $("dataFileRows").innerHTML = state.files.map((file) => {
-    const canSync = ["jsonl", "csv", "sqlite", "db"].includes(String(file.type).toLowerCase());
-    const safePath = escapeHtml(file.path);
-    const urlPath = filePathForUrl(file.path);
-    return `
+      const safePath = escapeHtml(file.path);
+      const urlPath = filePathForUrl(file.path);
+      return `
       <tr data-path="${safePath}">
         <td>${escapeHtml(file.path)}</td>
         <td>${escapeHtml(file.type || "-")}</td>
@@ -333,8 +316,7 @@ function renderDataFiles() {
         <td>
           <div class="file-actions">
             <button data-file-action="preview" data-path="${safePath}">预览</button>
-            <button data-file-action="dry-sync" data-path="${safePath}" ${canSync ? "" : "disabled"}>Dry-Run</button>
-            <button data-file-action="sync" data-path="${safePath}" ${canSync ? "" : "disabled"}>分析报告</button>
+            <button data-file-action="report" data-path="${safePath}">分析报告</button>
             <a href="/api/data/download/${urlPath}" target="_blank" rel="noreferrer">下载</a>
           </div>
         </td>
@@ -342,7 +324,92 @@ function renderDataFiles() {
   }).join("");
 }
 
-async function analyzeAndReport(filePath) {
+function summarizeRecord(record) {
+  if (!record || typeof record !== "object") return "-";
+  const parts = [
+    record.title,
+    record.desc,
+    record.content,
+    record.text,
+  ].filter(Boolean);
+  return parts.join(" ").replace(/\s+/g, " ").slice(0, 120) || "-";
+}
+
+function solutionTextForCategory(category, solutions) {
+  const matched = solutions.find((item) => {
+    const name = item.category || item.category_name || item.name || "";
+    return String(name) === String(category);
+  });
+  if (!matched) return "-";
+  const list = matched.solutions || [];
+  if (Array.isArray(list) && list.length) {
+    return list.map((item) => {
+      const name = item.name || item.solution_name || "";
+      const ptype = item.product_type || item.solution_type || "";
+      const cost = item.cost || "";
+      let parts = [name];
+      if (ptype) parts.push(ptype);
+      if (cost) parts.push(cost + "成本");
+      return parts.join(" / ");
+    }).join("  |  ").slice(0, 180);
+  }
+  return "-";
+}
+
+function normalizeReportRows(report) {
+  if (!report) return [];
+  const aggregation = Array.isArray(report.aggregation) ? report.aggregation : [];
+  const solutions = Array.isArray(report.solutions_data) ? report.solutions_data : [];
+  return aggregation.map((item) => {
+    const category = item.category || item.name || "未分类";
+    const count = Number(item.count || item.total || 0);
+    return {
+      category,
+      count,
+      solution: solutionTextForCategory(category, solutions),
+    };
+  });
+}
+
+function renderAnalysisReport(report) {
+  if (report === undefined) report = state.analysisReport;
+  var rowsEl = document.getElementById('analysisReportRows');
+  if (!rowsEl) return;
+  var hasReport = Boolean(report);
+  var statusEl = document.getElementById('analysisReportStatus');
+  if (statusEl) statusEl.textContent = hasReport ? '生成时间：' + (report.generated_at || '-') : '暂无报告';
+  var el;
+  el = document.getElementById('reportTotal'); if(el) el.textContent = hasReport ? String(report.total || 0) : '0';
+  el = document.getElementById('reportCategories'); if(el) el.textContent = hasReport ? String(report.categories || 0) : '0';
+  el = document.getElementById('reportSolutions'); if(el) el.textContent = hasReport ? String(report.solutions || 0) : '0';
+  el = document.getElementById('reportWebhook'); if(el) el.textContent = hasReport && report.webhook_sent ? '已发送' : '未发送';
+
+  var rows = normalizeReportRows(report);
+  if (!rows.length) {
+    rowsEl.innerHTML = '<tr><td colspan="4" class="empty">暂无分析报告。在“需求库”选择导出文件后生成报告。</td></tr>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    html += '<tr class="clickable-row" data-category="' + escapeHtml(r.category) + '">';
+    html += '<td style="color:var(--muted);font-size:12px">' + (i + 1) + '</td>';
+    html += '<td><strong>' + escapeHtml(r.category) + '</strong></td>';
+    html += '<td>' + r.count + '</td>';
+    html += '<td>' + escapeHtml(r.solution || '-') + '</td>';
+    html += '</tr>';
+  }
+  rowsEl.innerHTML = html;
+
+  rowsEl.querySelectorAll('.clickable-row').forEach(function(tr) {
+    tr.addEventListener('click', function() {
+      var cat = tr.dataset.category;
+      var sols = (state.analysisReport && state.analysisReport.solutions_data) || [];
+      var filtered = filterSolutions(sols);
+      openSolutionDialog(cat, filtered);
+    });
+  });
+}async function analyzeAndReport(filePath) {
   if (!window.confirm(`将分析此文件并发送报告到飞书群：${filePath}\n确认继续？`)) {
     return;
   }
@@ -352,6 +419,12 @@ async function analyzeAndReport(filePath) {
       method: "POST",
       body: JSON.stringify({ file_path: filePath, dry_run: false, batch_size: 100 }),
     });
+    state.analysisReport = {
+      ...data,
+      file_path: filePath,
+      generated_at: new Date().toLocaleString("zh-CN", { hour12: false }),
+    };
+    renderAnalysisReport();
     $("dataPreviewBox").textContent = JSON.stringify(data, null, 2);
     if (data.webhook_sent) {
       appendLocalLog("success", `分析完成：${data.total} 条数据，${data.categories} 个分类，已发送飞书群报告`);
@@ -373,32 +446,6 @@ async function previewDataFile(filePath) {
   } catch (error) {
     $("dataPreviewBox").textContent = `预览失败：${error.message}`;
     appendLocalLog("error", `预览文件失败：${error.message}`);
-  }
-}
-
-async function syncDataFile(filePath, dryRun) {
-  if (!dryRun && state.lastDryRunFilePath !== filePath) {
-    appendLocalLog("error", "正式同步前，请先对同一文件执行 Dry-Run。");
-    return;
-  }
-  if (!dryRun && !window.confirm(`将把文件同步写入飞书需求库：${filePath}\n确认继续？`)) {
-    return;
-  }
-  try {
-    const data = await api("/api/data/sync-to-feishu", {
-      method: "POST",
-      body: JSON.stringify({ file_path: filePath, dry_run: dryRun, batch_size: 100 }),
-    });
-    const stats = data.stats || {};
-    if (dryRun) state.lastDryRunFilePath = filePath;
-    $("dataPreviewBox").textContent = JSON.stringify(data, null, 2);
-    appendLocalLog(
-      dryRun ? "info" : "success",
-      `${dryRun ? "Dry-Run" : "同步"} ${filePath}：成功 ${stats.success || 0}，跳过 ${stats.skipped || 0}，失败 ${stats.failed || 0}，待同步 ${stats.pending || 0}`,
-    );
-  } catch (error) {
-    $("dataPreviewBox").textContent = `同步失败：${error.message}`;
-    appendLocalLog("error", `同步文件到飞书失败：${error.message}`);
   }
 }
 
@@ -424,26 +471,44 @@ function appendLocalLog(level, message) {
   renderLogs();
 }
 
+function normalizePipelineLog(line) {
+  const text = String(line || "");
+  const match = text.match(/^\[([^\]]+)\]\s*(.*)$/);
+  const message = match ? match[2] : text;
+  const lower = message.toLowerCase();
+  let level = "info";
+  if (lower.includes("failed") || lower.includes("error")) level = "error";
+  else if (lower.includes("stderr") || lower.includes("warning") || lower.includes("timed out")) level = "warning";
+  return {
+    timestamp: match ? match[1] : "--",
+    level,
+    message,
+    source: "pipeline",
+  };
+}
+
 function renderLogs() {
+  const logBox = $("logBox");
   const source = $("logSource").value;
   const onlyErrors = $("errorsOnly").checked;
   const feishuLogs = (state.runner?.logs || []).map((item) => ({ ...item, source: "feishu" }));
   const crawlerLogs = state.crawlerLogs.map((item) => ({ ...item, source: "crawler" }));
-  let logs = [...state.logs, ...feishuLogs, ...crawlerLogs];
+  let logs = [...state.logs, ...state.pipelineLogs, ...feishuLogs, ...crawlerLogs];
   if (source !== "all") logs = logs.filter((item) => item.source === source);
   if (onlyErrors) logs = logs.filter((item) => item.level === "error");
   if (!logs.length) {
-    $("logBox").innerHTML = '<div class="log-line"><span>--</span><span class="info">INFO</span><span>等待任务运行...</span></div>';
+    logBox.innerHTML = '<div class="log-line"><span>--</span><span class="info">INFO</span><span>等待任务运行...</span></div>';
+    if ($("autoScroll").checked) requestAnimationFrame(() => { logBox.scrollTop = logBox.scrollHeight; });
     return;
   }
-  $("logBox").innerHTML = logs.slice(-240).map((item) => `
+  logBox.innerHTML = logs.slice(-240).map((item) => `
     <div class="log-line">
       <span>${escapeHtml(item.timestamp || "--")}</span>
       <span class="${escapeHtml(item.level || "info")}">${escapeHtml(String(item.level || "info").toUpperCase())}</span>
       <span>${escapeHtml(item.message || "")}</span>
     </div>
   `).join("");
-  if ($("autoScroll").checked) $("logBox").scrollTop = $("logBox").scrollHeight;
+  if ($("autoScroll").checked) requestAnimationFrame(() => { logBox.scrollTop = logBox.scrollHeight; });
 }
 
 async function saveTask(event) {
@@ -526,6 +591,10 @@ function bindEvents() {
     if (state.runner) state.runner.logs = [];
     renderLogs();
   });
+  $("clearAnalysisReportBtn")?.addEventListener("click", () => {
+    state.analysisReport = null;
+    renderAnalysisReport();
+  });
   $("taskForm").addEventListener("submit", saveTask);
   $("closeTaskDialogBtn").addEventListener("click", () => $("taskDialog").close());
   $("taskRows").addEventListener("click", (event) => {
@@ -554,8 +623,7 @@ function bindEvents() {
     if (!button) return;
     const path = button.dataset.path;
     if (button.dataset.fileAction === "preview") previewDataFile(path);
-    if (button.dataset.fileAction === "dry-sync") syncDataFile(path, true);
-    if (button.dataset.fileAction === "sync") analyzeAndReport(path);
+    if (button.dataset.fileAction === "report") analyzeAndReport(path);
   });
   $("refreshConfigBtn").addEventListener("click", () => Promise.all([loadEnv(), loadConfig()]));
   $("refreshConfigBtn").addEventListener("click", loadLlmConfig);
@@ -563,53 +631,48 @@ function bindEvents() {
   $("testWebhookBtn")?.addEventListener("click", testWebhook);
   $("saveLlmBtn")?.addEventListener("click", saveLlmConfig);
   $("testLlmBtn")?.addEventListener("click", testLlmConnection);
+  $("startPipelineBtn")?.addEventListener("click", startPipeline);
+  $("refreshPipelineBtn")?.addEventListener("click", loadPipelineStatus);
+  $("closeSolutionDialogBtn")?.addEventListener("click", function() { document.getElementById('solutionDialog').close(); });
+  setupFilterButtons();
   ["logSource", "errorsOnly", "autoScroll"].forEach((id) => $(id).addEventListener("change", renderLogs));
+  const workspace = document.querySelector(".workspace");
+  const pageMap = {
+    overview: "page-overview",
+    data: "page-data",
+    analysis: "page-analysis",
+    settings: "page-settings",
+  };
+  const targetMap = {
+    overview: "#pipelineSection",
+    tasks: "#crawlerSection",
+    logs: ".log-panel",
+    data: "#dataSection",
+    analysis: "#analysisReportSection",
+    settings: "#configSection",
+  };
+  function scrollToTarget(selector) {
+    const target = document.querySelector(selector);
+    if (!target || !workspace) return;
+    const top = workspace.scrollTop + target.getBoundingClientRect().top - workspace.getBoundingClientRect().top - 12;
+    workspace.scrollTo({ top, behavior: "smooth" });
+  }
+  function showSection(section) {
+    document.querySelectorAll(".page-panel").forEach((panel) => {
+      panel.style.display = "none";
+    });
+    const page = document.getElementById(pageMap[section] || "page-overview");
+    if (page) page.style.display = "block";
+    scrollToTarget(targetMap[section] || "#crawlerSection");
+  }
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => {
       document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
-
-      const section = button.dataset.section;
-      const isSecondary = ["data", "config", "webhook", "llm"].includes(section);
-
-      // Toggle main content vs secondary pages
-      document.querySelectorAll(".crawler-panel, .log-panel").forEach(el => {
-        el.style.display = isSecondary ? "none" : "";
-      });
-      document.querySelectorAll(".page-panel").forEach(p => p.style.display = "none");
-
-      if (isSecondary) {
-        let pageId = "page-" + section;
-        if (section === "webhook" || section === "llm") pageId = "page-settings";
-        const page = document.getElementById(pageId);
-        if (page) page.style.display = "block";
-      }
+      showSection(button.dataset.section);
     });
   });
-  // Auto-track active nav section on scroll
-  const sectionEls = [
-    document.querySelector(".kpis"),
-    document.querySelector(".task-panel"),
-    document.querySelector(".log-panel"),
-    document.querySelector("#dataSection"),
-    document.querySelector("#configSection"),
-    document.querySelector("#webhookSection"),
-    document.querySelector("#llmSection"),
-  ];
-  const sectionNames = ["overview", "tasks", "logs", "data", "config", "webhook", "llm"];
-  const scrollContainer = document.querySelector(".workspace");
-  if (scrollContainer) {
-    scrollContainer.addEventListener("scroll", () => {
-      const scrollTop = scrollContainer.scrollTop + 120;
-      let activeIdx = 0;
-      sectionEls.forEach((el, i) => {
-        if (el && el.offsetTop <= scrollTop) activeIdx = i;
-      });
-      document.querySelectorAll(".nav-item").forEach((item, i) => {
-        item.classList.toggle("active", i === activeIdx);
-      });
-    });
-  }
+  showSection("overview");
 }
 
 function setFormValue(form, name, value) {
@@ -786,12 +849,166 @@ async function saveWebhookUrl() {
 }
 
 
+
+
+
+// ===== One-Click Pipeline =====
+
+async function loadPipelineStatus() {
+  try {
+    const data = await api('/api/pipeline/status');
+    const statusEl = document.getElementById('pipelineStatus');
+    if (!statusEl) {return;}
+    var map = { idle: '空闲', running: '运行中', completed: '已完成', failed: '失败' };
+    statusEl.textContent = map[data.status] || data.status;
+    state.pipelineLogs = (data.logs || []).map(normalizePipelineLog);
+    renderLogs();
+    if (data.last_result && data.last_result.total_files > 0) {
+      document.getElementById('pipelineResult').innerHTML = '<div class="report-stat" style="display:inline-block;padding:12px 16px;border:1px solid var(--line);border-radius:8px;background:var(--surface-alt)"><span>采集文件</span><strong>' + data.last_result.total_files + '</strong></div>';
+    }
+    if (data.status === 'running' && !pipelinePollTimer) {
+      startPipelinePolling();
+    }
+    if (data.status === 'completed' || data.status === 'failed' || data.status === 'idle') {
+      stopPipelinePolling();
+    }
+    return data;
+  } catch(e) {}
+}
+
+function startPipelinePolling() {
+  stopPipelinePolling();
+  pipelinePollTimer = setInterval(loadPipelineStatus, 1500);
+}
+
+function stopPipelinePolling() {
+  if (pipelinePollTimer) {
+    clearInterval(pipelinePollTimer);
+    pipelinePollTimer = null;
+  }
+}
+
+async function startPipeline() {
+  var platformInputs = document.querySelectorAll('#pipelinePlatforms input[type="checkbox"]:checked');
+  var platforms = Array.from(platformInputs).map(function(input) { return input.value; });
+  var keywordInput = document.querySelector('input[name="pipelineKeywordCount"]:checked');
+  var keywordCount = parseInt(keywordInput ? keywordInput.value : '3') || 3;
+  var maxNotes = parseInt(document.getElementById('pipelineMaxNotes').value) || 15;
+  if (platforms.length === 0) { appendLocalLog('warning', '请选择平台'); return; }
+  if (!confirm('启动自动需求发现\n平台: ' + platforms.join(', ') + '\n关键词数: ' + keywordCount)) {return;}
+  try {
+    appendLocalLog('info', '一键需求发现启动...');
+    var data = await api('/api/pipeline/start', {
+      method: 'POST',
+      body: JSON.stringify({ platforms: platforms, keyword_count: keywordCount, max_notes: maxNotes }),
+    });
+    if (data.status === 'started') {
+      appendLocalLog('success', data.message || '后台运行已启动');
+      await loadPipelineStatus();
+      startPipelinePolling();
+    } else if (data.status === 'completed') {
+      appendLocalLog('success', data.message || '完成');
+      await loadPipelineStatus();
+      loadDataFiles();
+    } else {
+      appendLocalLog('warning', data.message || '未启动');
+    }
+  } catch(e) {
+    appendLocalLog('error', '失败: ' + e.message);
+  }
+}
+
+
+// ===== Product Type Filter =====
+var _filterType = 'all';
+
+function setupFilterButtons() {
+  var bar = document.getElementById('productTypeFilter');
+  if (!bar) return;
+  bar.addEventListener('click', function(e) {
+    var btn = e.target.closest('.filter-btn');
+    if (!btn) return;
+    bar.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    _filterType = btn.dataset.filter;
+    renderAnalysisReport();
+  });
+}
+
+// ===== Solution Detail Dialog =====
+
+function openSolutionDialog(category, solutions) {
+  var matched = null;
+  if (Array.isArray(solutions)) {
+    for (var i = 0; i < solutions.length; i++) {
+      if (solutions[i].category === category) { matched = solutions[i]; break; }
+    }
+  }
+  var content = document.getElementById('solutionDetailContent');
+  var titleEl = document.getElementById('solutionDialogTitle');
+  if (!content) return;
+  titleEl.textContent = category + ' - 方案详情';
+  if (!matched || !matched.solutions || matched.solutions.length === 0) {
+    content.innerHTML = '<p class="empty">暂无AI方案。</p>';
+  } else {
+    var html = '';
+    for (var s = 0; s < matched.solutions.length; s++) {
+      var sol = matched.solutions[s];
+      var name = sol.name || sol.solution_name || '方案';
+      var ptype = sol.product_type || sol.solution_type || '';
+      var summary = sol.summary || '';
+      var users = sol.target_users || '';
+      var tech = sol.tech_stack || '';
+      var cost = sol.cost || '';
+      var timeline = sol.timeline || '';
+      var monetization = sol.monetization || '';
+      var reference = sol.reference || '';
+      var innovation = sol.innovation || '';
+      html += '<div class="solution-card">';
+      html += '<div class="solution-card-head">';
+      html += '<strong>' + escapeHtml(name) + '</strong>';
+      if (ptype) html += '<span class="status-pill">' + escapeHtml(ptype) + '</span>';
+      html += '</div>';
+      if (summary) html += '<p class="solution-card-summary">' + escapeHtml(summary) + '</p>';
+      html += '<dl>';
+      if (users) html += '<dt>目标用户</dt><dd>' + escapeHtml(users) + '</dd>';
+      if (tech) html += '<dt>技术栈</dt><dd>' + escapeHtml(tech) + '</dd>';
+      if (cost) html += '<dt>开发成本</dt><dd>' + escapeHtml(cost) + '</dd>';
+      if (timeline) html += '<dt>预估周期</dt><dd>' + escapeHtml(timeline) + '</dd>';
+      if (monetization) html += '<dt>变现方式</dt><dd>' + escapeHtml(monetization) + '</dd>';
+      if (reference) html += '<dt>竞品参考</dt><dd>' + escapeHtml(reference) + '</dd>';
+      if (innovation) html += '<dt>创新点</dt><dd>' + escapeHtml(innovation) + '</dd>';
+      html += '</dl>';
+      html += '</div>';
+    }
+    content.innerHTML = html;
+  }
+  document.getElementById('solutionDialog').showModal();
+}
+
+function filterSolutions(solutions) {
+  if (_filterType === 'all') return solutions;
+  var result = [];
+  for (var i = 0; i < solutions.length; i++) {
+    var item = solutions[i];
+    var sols = item.solutions || [];
+    var filtered = [];
+    for (var s = 0; s < sols.length; s++) {
+      var ptype = sols[s].product_type || sols[s].solution_type || '';
+      if (ptype.indexOf(_filterType) >= 0) { filtered.push(sols[s]); }
+    }
+    if (filtered.length > 0) {
+      result.push({ category: item.category, count: item.count, rank: item.rank, solutions: filtered });
+    }
+  }
+  return result;
+}
+
 async function boot() {
-  tickClock();
-  setInterval(tickClock, 1000);
   bindEvents();
   updateCrawlerPreview();
-  await Promise.all([loadEnv(), loadConfig(), loadTasks(), loadLogs(), loadCrawlerStatus(), loadDataFiles(), loadWebhookStatus(), loadLlmConfig()]);
+  renderAnalysisReport();
+  await Promise.all([loadEnv(), loadConfig(), loadTasks(), loadLogs(), loadCrawlerStatus(), loadDataFiles(), loadWebhookStatus(), loadLlmConfig(), loadPipelineStatus()]);
   setInterval(loadLogs, 2500);
   setInterval(loadDataFiles, 8000);  // auto-refresh data files
   appendLocalLog("info", "控制台已启动，本机模式。");

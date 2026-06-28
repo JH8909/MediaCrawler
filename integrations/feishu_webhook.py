@@ -2,7 +2,7 @@
 
 """
 Feishu Group Chat Webhook Notification
-Alternative to Bitable API when personal version restricts write access.
+Webhook notification helper for Feishu group bot messages.
 
 Usage:
   1. Create a Feishu group chat
@@ -41,6 +41,7 @@ def send_crawl_summary(
         webhook_url = get_webhook_url()
     if not webhook_url:
         return False
+    stats = stats or {}
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     status_emoji = "OK" if stats.get("success", 0) > 0 else "NO" if stats.get("failed", 0) > 0 else "II"
@@ -84,24 +85,6 @@ def send_crawl_summary(
                 fields_lines.append("   作者: " + nickname + " | 赞: " + str(likes))
             if url:
                 fields_lines.append("   链接: " + url)
-            fields_lines.append("")
-    if content_items:
-        fields_lines.append("")
-        fields_lines.append("**采集内容：**")
-        fields_lines.append("")
-        for i, item in enumerate(content_items[:5], 1):
-            title = item.get("title", "") or ""
-            desc = item.get("desc", "") or ""
-            nickname = item.get("nickname", "") or ""
-            likes = item.get("likes", "0") or "0"
-            url = item.get("url", "") or ""
-            if not title and not desc:
-                continue
-            fields_lines.append("── " + str(i) + ". " + (title[:50] if title else desc[:50]))
-            if nickname:
-                fields_lines.append("   作者: " + nickname + "  赞: " + str(likes))
-            if url:
-                fields_lines.append("   " + url)
             fields_lines.append("")
 
     payload = {
@@ -222,7 +205,7 @@ def send_requirements_doc(
         "card": {
             "header": {"title": {"tag": "plain_text", "content": "采集需求报告"}, "template": "blue"},
             "elements": [
-                {"tag": "markdown", "content": nl.join(lines)},
+                {"tag": "markdown", "content": "\n".join(lines)},
                 {"tag": "hr"},
                 {"tag": "note", "elements": [{"tag": "plain_text", "content": "MediaCrawler 自动需求分析"}]},
             ],
@@ -241,7 +224,7 @@ def send_requirements_doc(
 
 
 
-def send_analysis_report(
+def send_demand_report(
     aggregation: list,
     solutions_data: list = None,
     keyword: str = "",
@@ -249,61 +232,60 @@ def send_analysis_report(
     total: int = 0,
     webhook_url: str = None,
 ) -> bool:
-    """Send pain point analysis + AI solutions report to Feishu group chat"""
-    if not webhook_url:
-        webhook_url = get_webhook_url()
+    """Send a clean, focused demand discovery report to Feishu group chat.
+
+    Shows:
+      - Pain point ranking (top 8)
+      - AI product proposal preview (top 3 categories, top 1 solution each)
+      - Local console link
+    """
     if not webhook_url:
         return False
 
-    # Emoji map for top categories
-    emojis = ["\U0001f534", "\U0001f7e0", "\U0001f7e1", "\U0001f7e2", "\U000026aa", "\U0001f7e3", "\U0001f7e4"]
+    emojis = ["🔴", "🟠", "🟡", "🟢", "⚪", "🟣", "🟤"]
 
     lines = []
-    lines.append("**\U0001f4ca 痛点分析报告**")
+    lines.append("**📊 需求发现报告**")
     lines.append("")
-    if keyword:
-        lines.append("**搜索关键词：** " + keyword)
     if platform:
-        lines.append("**采集平台：** " + platform)
-    lines.append("**有效数据：** " + str(total) + " 条")
+        lines.append("**平台：** " + platform + ("  |  **关键词：** " + keyword if keyword else ""))
+    lines.append("**本期发现 " + str(total) + " 条有效数据**")
     lines.append("")
 
-    # Pain point aggregation
-    lines.append("**\U0001f4cc 痛点频次排行**")
+    lines.append("**🔥 痛点排行 & 方案建议**")
     lines.append("")
-    for i, item in enumerate(aggregation):
-        emoji = emojis[i] if i < len(emojis) else "\U000026ab"
-        pct = round(item["count"] / max(total, 1) * 100, 1) if total > 0 else 0
-        bar = "\U00002588" * max(1, int(pct / 10))
-        lines.append(emoji + " **" + item["category"] + "**  " + str(item["count"]) + "次  (" + str(pct) + "%)")
-    lines.append("")
-
-    # AI Solutions
-    if solutions_data:
-        lines.append("**\U0001f916 AI 解决方案建议**")
+    for i, item in enumerate(aggregation[:8]):
+        emoji = emojis[i] if i < len(emojis) else "⚫"
+        cat = item["category"]
+        count = item["count"]
+        hs = item.get("hot_score", 0)
+        lines.append(emoji + " **" + cat + "**  · " + str(count) + "次" + ("  ★ 热度" + str(hs) if hs else ""))
+        if solutions_data:
+            for sol_item in solutions_data:
+                if sol_item.get("category") == cat:
+                    sols = sol_item.get("solutions", [])
+                    if sols:
+                        sol = sols[0]
+                        ptype = sol.get("product_type", sol.get("solution_type", ""))
+                        cost = sol.get("cost", "")
+                        name = sol.get("name", sol.get("solution_name", ""))
+                        lines.append("  💡 " + name + " (" + ptype + ("/" + cost + "成本" if cost else "") + ")")
+                    break
         lines.append("")
-        for sol_item in solutions_data[:3]:  # Top 3
-            cat = sol_item["category"]
-            count = sol_item["count"]
-            solutions = sol_item.get("solutions", [])
-            lines.append("**\U0001f4a1 " + cat + "**（" + str(count) + "次）")
-            for sol in solutions[:2]:  # Top 2 solutions per category
-                lines.append("- " + sol.get("solution_name", "") + " [" + sol.get("solution_type", "") + " / " + sol.get("cost", "") + "成本]")
-            lines.append("")
 
-    lines.append("\U0001f4dd 详情可查看飞书 Bitable")
+    lines.append("📝 详情可查看本地控制台：http://localhost:8081")
 
     payload = {
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": "\U0001f4ca 痛点分析报告"},
+                "title": {"tag": "plain_text", "content": "📊 需求发现报告"},
                 "template": "blue",
             },
             "elements": [
                 {"tag": "markdown", "content": "\n".join(lines)},
                 {"tag": "hr"},
-                {"tag": "note", "elements": [{"tag": "plain_text", "content": "MediaCrawler 痛点分析 - AI 自动生成"}]},
+                {"tag": "note", "elements": [{"tag": "plain_text", "content": "MediaCrawler 自动需求发现"}]},
             ],
         },
     }
@@ -314,10 +296,65 @@ def send_analysis_report(
             response.raise_for_status()
             return True
     except Exception as exc:
-        print("[FeishuWebhook] Failed to send analysis report: " + str(exc))
+        print("[FeishuWebhook] Failed to send demand report: " + str(exc))
         return False
 
 
+# Keep the old name as alias for backward compatibility
+send_analysis_report = send_demand_report
+
+
+def send_demand_report_summary(
+    platforms: list,
+    keyword_plans: list,
+    stats: Any,
+    excel_path: str,
+    webhook_url: str = None,
+) -> bool:
+    """Send an automated demand report summary with the local Excel path."""
+
+    if not webhook_url:
+        webhook_url = get_webhook_url()
+    if not webhook_url:
+        return False
+
+    keywords = [getattr(plan, "keyword", str(plan)) for plan in keyword_plans]
+    lines = [
+        "**MediaCrawler 自动需求采集完成**",
+        "",
+        "**平台：** " + "、".join(platforms),
+        "**本轮关键词：** " + " / ".join(keywords),
+        "**新增需求：** " + str(getattr(stats, "new_items", 0)) + " 条",
+        "**评论需求：** " + str(getattr(stats, "comment_items", 0)) + " 条",
+        "**正文需求：** " + str(getattr(stats, "body_items", 0)) + " 条",
+        "**跳过重复：** " + str(getattr(stats, "skipped_duplicates", 0)) + " 条",
+        "**失败任务：** " + str(getattr(stats, "failed_tasks", 0)) + " 个",
+    ]
+    if excel_path:
+        lines.extend(["", "**Excel 文件：**", excel_path])
+    else:
+        lines.extend(["", "**Excel 文件：** 本轮未发现新增需求"])
+
+    payload = {
+        "msg_type": "interactive",
+        "card": {
+            "header": {"title": {"tag": "plain_text", "content": "自动需求采集完成"}, "template": "blue"},
+            "elements": [
+                {"tag": "markdown", "content": "\n".join(lines)},
+                {"tag": "hr"},
+                {"tag": "note", "elements": [{"tag": "plain_text", "content": "仅发送本地文件路径，不上传文件"}]},
+            ],
+        },
+    }
+
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.post(webhook_url, json=payload)
+            response.raise_for_status()
+            return True
+    except Exception as exc:
+        print("[FeishuWebhook] Failed to send demand report summary: " + str(exc))
+        return False
 def test_webhook(webhook_url: str) -> Dict[str, Any]:
     """Test if a webhook URL is valid"""
     payload = {

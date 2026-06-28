@@ -23,9 +23,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
-
-from scripts.sync_to_feishu import run_sync
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/data", tags=["data"])
 
@@ -36,8 +34,6 @@ SUPPORTED_EXTENSIONS = {".json", ".jsonl", ".csv", ".xlsx", ".xls", ".sqlite", "
 
 class DataSyncRequest(BaseModel):
     file_path: str
-    dry_run: bool = True
-    batch_size: int = Field(default=100, ge=1, le=500)
 
 
 def get_file_info(file_path: Path) -> dict:
@@ -227,51 +223,10 @@ async def get_data_stats():
     return stats
 
 
-@router.post("/sync-to-feishu")
-async def sync_data_file_to_feishu(request: DataSyncRequest):
-    full_path = _resolve_data_file(request.file_path)
-    input_format = _infer_sync_format(full_path)
-    error_detail = ""
-    try:
-        stats = run_sync(
-            input_path=full_path,
-            input_format=input_format,
-            dry_run=request.dry_run,
-            batch_size=request.batch_size,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        error_detail = f"{type(exc).__name__}: {exc}"
-        raise HTTPException(
-            status_code=500,
-            detail=error_detail,
-        ) from exc
-
-    result = {
-        "status": "ok",
-        "format": input_format,
-        "dry_run": request.dry_run,
-        "stats": {
-            "success": stats.success,
-            "skipped": stats.skipped,
-            "failed": stats.failed,
-            "pending": stats.pending,
-        },
-    }
-    # If all records failed, try to get the underlying error
-    if stats.success == 0 and stats.failed > 0 and hasattr(stats, "errors") and stats.errors:
-        result["errors"] = stats.errors[:5]
-    return result
-
-
-
 @router.post("/analyze-report")
 async def analyze_and_report(request: DataSyncRequest):
     """Load data file, run analysis + AI solutions, send webhook report"""
     full_path = _resolve_data_file(request.file_path)
-    input_format = _infer_sync_format(full_path)
-    
     try:
         # Step 1: Load records
         import json as _json
@@ -283,7 +238,17 @@ async def analyze_and_report(request: DataSyncRequest):
                     records.append(_json.loads(line))
         
         if not records:
-            return {"status": "ok", "message": "无数据可分析", "total": 0}
+            return {
+                "status": "ok",
+                "message": "无数据可分析",
+                "total": 0,
+                "categories": 0,
+                "aggregation": [],
+                "classified_records": [],
+                "solutions": 0,
+                "solutions_data": [],
+                "webhook_sent": False,
+            }
         
         # Step 2: Classify and aggregate
         from api.services.needs_analyzer import analyze_records
@@ -308,36 +273,32 @@ async def analyze_and_report(request: DataSyncRequest):
             except Exception:
                 pass
         
-        # Step 4: Send webhook report
-        from integrations.feishu_webhook import send_crawl_summary, send_analysis_report, get_webhook_url
+        # Step 4: Send webhook report (single consolidated message)
+        from integrations.feishu_webhook import send_demand_report, get_webhook_url
         wu = get_webhook_url()
         webhook_sent = False
         if wu:
-            items = []
-            for r in records[:5]:
-                items.append({
-                    "title": r.get("title", ""),
-                    "desc": r.get("desc", "")[:80],
-                    "nickname": r.get("nickname", ""),
-                    "likes": r.get("liked_count", "0"),
-                    "url": r.get("note_url", ""),
-                })
-            send_crawl_summary(platform=full_path.parent.name, crawler_type="analysis", keywords="", stats={"success": len(records), "skipped": 0, "failed": 0}, content_items=items[:5], webhook_url=wu)
-            send_analysis_report(
+            # Extract platform name and keyword from the data file path
+            platform_name = full_path.parent.name if full_path.parent.name != "data" else ""
+            # Get source_keyword from first record if available
+            first_keyword = (records[0].get("source_keyword", "") or "") if records else ""
+            webhook_sent = send_demand_report(
                 aggregation=agg,
                 solutions_data=solutions_data,
-                keyword="", platform=full_path.parent.name,
+                keyword=first_keyword,
+                platform=platform_name,
                 total=len(records),
                 webhook_url=wu,
             )
-            webhook_sent = True
         
         return {
             "status": "ok",
             "total": len(records),
             "categories": len(agg),
             "aggregation": agg,
+            "classified_records": classified,
             "solutions": len(solutions_data),
+            "solutions_data": solutions_data,
             "webhook_sent": webhook_sent,
         }
     except Exception as exc:
@@ -357,13 +318,3 @@ def _resolve_data_file(file_path: str) -> Path:
         raise HTTPException(status_code=400, detail="Not a file")
     return full_path
 
-
-def _infer_sync_format(file_path: Path) -> str:
-    suffix = file_path.suffix.lower()
-    if suffix == ".jsonl":
-        return "jsonl"
-    if suffix == ".csv":
-        return "csv"
-    if suffix in {".sqlite", ".db"}:
-        return "sqlite"
-    raise HTTPException(status_code=400, detail="Only JSONL, CSV and SQLite files can sync to Feishu")

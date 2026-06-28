@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MediaCrawler 控制台</title>
-    <link rel="stylesheet" href="/static/dashboard.css" />
+    <link rel="stylesheet" href="/static/dashboard.css?v=20260628-11" />
   </head>
   <body>
     <div class="app-shell">
@@ -14,54 +14,55 @@
           <strong>MediaCrawler</strong>
         </div>
         <nav class="nav">
-          <button class="nav-item active" data-section="overview">总览</button>
-          <button class="nav-item" data-section="tasks">采集任务</button>
-          <button class="nav-item" data-section="logs">运行日志</button>
-          <button class="nav-item" data-section="data">需求库</button>
-          <button class="nav-item" data-section="config">配置检查</button>
-          <button class="nav-item" data-section="webhook">Webhook</button>
-            <button class="nav-item" data-section="llm">AI 模型</button>
+          <button class="nav-item active" data-section="overview">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>总览
+          </button>
+          <button class="nav-item" data-section="data">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.5 4.5v7c0 1 .8 2 2 2h7c1.2 0 2-1 2-2V6c0-1-.8-2-2-2H4.5c-1.2 0-2 1-2 2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 7.5h6M5 10h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>需求库
+          </button>
+          <button class="nav-item" data-section="analysis">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.5 13.5h11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4 10V6M7 10V4M10 10V8M13 10V3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>分析报告
+          </button>
+          <button class="nav-item" data-section="settings">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>设置
+          </button>
         </nav>
         <div class="sidebar-footer">
-          <span class="local-dot"></span>
-          <span>本地模式</span>
-          <small>版本 1.4.2</small>
-          <small style="color:#888;margin-top:2px;">127.0.0.1 本机</small>
+          <span class="local-status"><span class="local-dot"></span>本地模式</span>
+          <small>v1.4.2</small>
+          <small>127.0.0.1</small>
         </div>
       </aside>
 
       <main class="workspace">
-        <header class="topbar">
-  
-          <div class="checks" id="envChecks">
-            <span>环境检查：</span>
-            <span class="check pending">Python 检查中</span>
-            <span class="check pending">Bitable 检查中</span>
-            <span class="check pending">网络连接 检查中</span>
-          </div>
-          <div class="clock" id="clock">--</div>
-        </header>
-
-        <section class="kpis" id="kpiSection">
+        <section class="kpis" id="kpiSection" hidden>
           <article class="metric">
-            <div class="metric-icon blue">待</div>
+            <div class="metric-icon blue">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="#fff" stroke-width="2"/><path d="M10 7v3l2 2" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </div>
             <div><span>待执行</span><strong id="countPending">0</strong></div>
           </article>
           <article class="metric">
-            <div class="metric-icon green">启</div>
+            <div class="metric-icon green">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 10l4 4 8-8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
             <div><span>运行中</span><strong id="countRunning">0</strong></div>
           </article>
           <article class="metric">
-            <div class="metric-icon blue">成</div>
+            <div class="metric-icon" style="background:#6366f1">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="14" height="14" rx="3" stroke="#fff" stroke-width="2"/><path d="M7 10l2 2 4-4" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
             <div><span>已完成</span><strong id="countDone">0</strong></div>
           </article>
           <article class="metric">
-            <div class="metric-icon red">失</div>
+            <div class="metric-icon red">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="#fff" stroke-width="2"/><path d="M7.5 7.5l5 5M12.5 7.5l-5 5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </div>
             <div><span>失败</span><strong id="countFailed">0</strong></div>
           </article>
         </section>
 
-        <section class="quick-actions" id="quickActions">
+        <section class="quick-actions" id="quickActions" hidden>
           <div>
             <strong>今日操作</strong>
             <span>先 Dry-Run，再正式采集/同步；高风险动作会二次确认。</span>
@@ -75,7 +76,7 @@
           </div>
         </section>
 
-        <section class="content-grid">
+        <section class="content-grid" hidden>
           <section class="panel task-panel">
             <div class="panel-head">
               <h2>采集任务列表 <span id="taskTotal">（共 0 条）</span></h2>
@@ -98,7 +99,7 @@
                   </tr>
                 </thead>
                 <tbody id="taskRows">
-                  <tr><td colspan="7" class="empty">正在读取飞书任务表...</td></tr>
+                  <tr><td colspan="7" class="empty">暂无本地任务。</td></tr>
                 </tbody>
               </table>
             </div>
@@ -120,197 +121,383 @@
               <strong>安全命令预览</strong>
               <button id="copyCommandBtn">复制</button>
             </div>
-            <pre class="command-box" id="commandBox">请选择一条飞书采集任务。</pre>
-            <p class="safe-note">命令预览不会包含 Cookie、token 或个人账号；正式运行会采集公开内容并同步到飞书需求库。</p>
+            <pre class="command-box" id="commandBox">请选择一条采集任务。</pre>
+            <p class="safe-note">命令预览不会包含 Cookie、token 或个人账号；正式运行只采集公开内容。</p>
           </aside>
         </section>
 
-        <!-- ===== 二级页面（点击导航后显示） ===== -->        <div id="page-data" class="page-panel" style="display:none;">        <section class="panel data-panel" id="dataSection">
-          <div class="panel-head">
-            <h2>需求库 / 导出文件</h2>
-            <div class="actions">
-              <span class="status-pill" id="dataStatsText">文件：0</span>
-              <button id="refreshDataBtn">刷新文件</button>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>文件</th>
-                  <th>类型</th>
-                  <th>记录数</th>
-                  <th>大小</th>
-                  <th>更新时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody id="dataFileRows">
-                <tr><td colspan="6" class="empty">正在读取导出文件...</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <pre class="command-box preview-box" id="dataPreviewBox">选择一个 JSONL/CSV/SQLite 文件后，可预览或同步到飞书需求库。</pre>
-        </section>
-
-        </div>        <div id="page-config" class="page-panel" style="display:none;">        <section class="panel config-panel" id="configSection">
-          <div class="panel-head">
-            <h2>配置检查</h2>
-            <button id="refreshConfigBtn">重新检查</button>
-          </div>
-          <div class="config-grid" id="configGrid"></div>
-        </section>
-  
-        </div>        <div id="page-settings" class="page-panel" style="display:none;">        <section class="panel config-panel" id="webhookSection">
-          <div class="panel-head">
-            <h2>飞书 Webhook 通知</h2>
-            <div class="actions">
-              <span id="webhookStatus">状态：未配置</span>
-              <button id="saveWebhookBtn">保存</button>
-              <button id="testWebhookBtn">测试连接</button>
-            </div>
-          </div>
-          <div class="config-grid" id="webhookGrid">
-            <div class="config-item" style="grid-column: 1/-1;">
-              <span>Webhook URL（飞书群机器人）</span>
-              <input id="webhookUrlInput" type="url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
-            </div>
-            <div class="config-item" style="grid-column: 1/-1;background:var(--blue-soft);">
-              <span>使用方法</span>
-              <div style="margin-top:6px;font-size:13px;line-height:1.8;">
-                1. 打开飞书群 → 设置 → 群机器人 → 添加自定义机器人<br/>
-                2. 复制 Webhook URL 粘贴到上方输入框，点击保存<br/>
-                3. 点"测试连接"确认可用<br/>
-                4. 采集完成后自动推送结果到群
+        <!-- ===== 二级页面（点击导航后显示） ===== -->
+        <div id="page-data" class="page-panel" style="display:none;">
+          <section class="panel data-panel" id="dataSection">
+            <div class="panel-head">
+              <h2>需求库 / 导出文件</h2>
+              <div class="actions">
+                <span class="status-pill" id="dataStatsText">文件：0</span>
+                <button id="refreshDataBtn">刷新文件</button>
               </div>
             </div>
-          </div>
-        </section>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>文件</th>
+                    <th>类型</th>
+                    <th>记录数</th>
+                    <th>大小</th>
+                    <th>更新时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="dataFileRows">
+                  <tr><td colspan="6" class="empty">正在读取导出文件...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <pre class="command-box preview-box" id="dataPreviewBox">选择一个 JSONL/CSV/SQLite 文件后，可预览或生成分析报告。</pre>
+          </section>
+        </div>
 
-        <section class="panel config-panel" id="llmSection">
-          <div class="panel-head">
-            <h2>LLM AI 模型配置</h2>
-            <div class="actions">
-              <span id="llmStatus">状态：未配置</span>
-              <button id="saveLlmBtn">保存</button>
-              <button id="testLlmBtn">测试连接</button>
+        <div id="page-settings" class="page-panel" style="display:none;">
+          <section class="panel config-panel" id="configSection">
+            <div class="panel-head">
+              <h2>配置检查</h2>
+              <button id="refreshConfigBtn">重新检查</button>
             </div>
-          </div>
-          <div class="config-grid" id="llmGrid">
-            <div class="config-item" style="grid-column: 1/-1;">
-              <span>API Key</span>
-              <input id="llmApiKeyInput" type="password" placeholder="输入 API Key（保存后不回显）" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
-            </div>
-            <div class="config-item" style="grid-column: 1/-1;">
-              <span>API URL</span>
-              <input id="llmApiUrlInput" type="url" placeholder="https://api.deepseek.com/v1/chat/completions" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
-            </div>
-            <div class="config-item" style="grid-column: 1/-1;">
-              <span>模型名称</span>
-              <input id="llmModelInput" type="text" placeholder="deepseek-v4-flash" style="width:100%;height:36px;border:1px solid var(--line-strong);border-radius:6px;padding:0 10px;margin-top:8px;" />
-            </div>
-            <div class="config-item" style="grid-column: 1/-1;background:var(--blue-soft);">
-              <span>说明</span>
-              <div style="margin-top:6px;font-size:13px;line-height:1.8;">
-                配置 AI 痛点分析用的模型 API，支持任何 OpenAI 兼容接口。<br/>
-                API Key 保存后不会明文回显，只显示前4位和后4位。<br/>
-                如果不配置，AI 方案生成会使用预设模板代替。
+            <div class="config-grid" id="configGrid"></div>
+          </section>
+
+          <section class="panel config-panel" id="webhookSection">
+            <div class="panel-head">
+              <h2>飞书 Webhook 通知</h2>
+              <div class="actions">
+                <span id="webhookStatus">状态：未配置</span>
+                <button id="saveWebhookBtn">保存</button>
+                <button id="testWebhookBtn">测试连接</button>
               </div>
             </div>
-          </div>
-        </section>
-
-        </div>        <section class="panel crawler-panel" id="crawlerSection">
-          <div class="panel-head">
-            <h2>本机直接采集</h2>
-            <div class="actions">
-              <span class="status-pill" id="crawlerStatusText">状态：读取中</span>
-              <button id="refreshCrawlerBtn">刷新状态</button>
-              <button id="stopCrawlerBtn">停止采集</button>
-              <button id="startCrawlerBtn" class="primary">启动采集</button>
+            <div class="config-grid" id="webhookGrid">
+              <div class="config-item config-item--wide">
+                <span>Webhook URL（飞书群机器人）</span>
+                <input id="webhookUrlInput" type="url" class="config-input" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx" />
+              </div>
+              <div class="config-item config-item--wide config-item--info">
+                <span>使用方法</span>
+                <div class="config-help">
+                  1. 打开飞书群 → 设置 → 群机器人 → 添加自定义机器人<br/>
+                  2. 复制 Webhook URL 粘贴到上方输入框，点击保存<br/>
+                  3. 点"测试连接"确认可用<br/>
+                  4. 采集完成后自动推送结果到群
+                </div>
+              </div>
             </div>
-          </div>
-          <form class="control-form" id="crawlerForm">
-            <label>平台
-              <select name="platform">
-                <option value="xhs">小红书</option>
-                <option value="dy">抖音</option>
-                <option value="ks">快手</option>
-                <option value="bili">Bilibili</option>
-                <option value="wb">微博</option>
-                <option value="tieba">贴吧</option>
-                <option value="zhihu">知乎</option>
-              </select>
-            </label>
-            <label>采集类型
-              <select name="crawler_type" id="crawlerType">
-                <option value="search">关键词</option>
-                <option value="detail">指定ID</option>
-                <option value="creator">创作者</option>
-              </select>
-            </label>
-            <label>登录方式
-              <select name="login_type">
-                <option value="qrcode">二维码 / 无需登录</option>
-                <option value="phone">手机号</option>
-                <option value="cookie">Cookie（不在页面输入）</option>
-              </select>
-            </label>
-            <label class="mode-field" data-mode="search">关键词
-              <input name="keywords" placeholder="search 模式使用，多个关键词用英文逗号分隔" />
-            </label>
-            <label class="mode-field" data-mode="detail">指定ID
-              <input name="specified_ids" placeholder="detail 模式使用，多个 ID 用英文逗号分隔" />
-            </label>
-            <label class="mode-field" data-mode="creator">创作者ID
-              <input name="creator_ids" placeholder="creator 模式使用，多个 ID 用英文逗号分隔" />
-            </label>
-            <label>保存格式
-              <select name="save_option">
-                <option value="jsonl">JSONL</option>
-                <option value="csv">CSV</option>
-                <option value="sqlite">SQLite</option>
-                <option value="json">JSON</option>
-                <option value="excel">Excel</option>
-              </select>
-            </label>
-            <label>起始页
-              <input name="start_page" type="number" min="1" value="1" />
-            </label>
-            <label>最大内容数
-              <input name="max_notes_count" type="number" min="1" max="10000" value="50" />
-            </label>
-            <label>单条最大评论数
-              <input name="max_comments_count" type="number" min="1" max="10000" placeholder="可选" />
-            </label>
-            <label class="checkline"><input name="enable_comments" type="checkbox" checked /> 采集一级评论</label>
-            <label class="checkline"><input name="enable_sub_comments" type="checkbox" /> 采集二级评论</label>
-            <label class="checkline"><input name="headless" type="checkbox" /> 无头浏览器</label>
-            <label class="checkline confirm-line"><input name="confirm_public" type="checkbox" /> 我确认仅采集公开内容并遵守平台规则</label>
-          </form>
-          <div class="inline-note">页面不会保存 Cookie 或账号信息。正式采集前建议先用飞书任务 Dry-Run 检查命令。</div>
-          <pre class="command-box preview-box" id="crawlerPayloadPreview">等待填写采集参数。</pre>
-        </section>
+          </section>
 
-        <section class="panel log-panel">
-          <div class="panel-head">
-            <h2>运行日志（实时）</h2>
-            <div class="actions">
-              <label><input type="checkbox" id="autoScroll" checked /> 自动滚动</label>
-              <label><input type="checkbox" id="errorsOnly" /> 仅错误</label>
-              <select id="logSource">
-                <option value="all">全部来源</option>
-                <option value="feishu">飞书任务</option>
-                <option value="crawler">本机采集</option>
-              </select>
-              <button id="clearLogsBtn">清空</button>
+          <section class="panel config-panel" id="llmSection">
+            <div class="panel-head">
+              <h2>LLM AI 模型配置</h2>
+              <div class="actions">
+                <span id="llmStatus">状态：未配置</span>
+                <button id="saveLlmBtn">保存</button>
+                <button id="testLlmBtn">测试连接</button>
+              </div>
             </div>
-          </div>
-          <div class="terminal" id="logBox"></div>
-        </section>
+            <div class="config-grid" id="llmGrid">
+              <div class="config-item config-item--wide">
+                <span>API Key</span>
+                <input id="llmApiKeyInput" type="password" class="config-input" placeholder="输入 API Key（保存后不回显）" />
+              </div>
+              <div class="config-item config-item--wide">
+                <span>API URL</span>
+                <input id="llmApiUrlInput" type="url" class="config-input" placeholder="https://api.deepseek.com/v1/chat/completions" />
+              </div>
+              <div class="config-item config-item--wide">
+                <span>模型名称</span>
+                <input id="llmModelInput" type="text" class="config-input" placeholder="deepseek-v4-flash" />
+              </div>
+              <div class="config-item config-item--wide config-item--info">
+                <span>说明</span>
+                <div class="config-help">
+                  配置 AI 痛点分析用的模型 API，支持任何 OpenAI 兼容接口。<br/>
+                  API Key 保存后不会明文回显，只显示前4位和后4位。<br/>
+                  如果不配置，AI 方案生成会使用预设模板代替。
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
 
-        <!-- ===== LLM AI 模型配置 ===== -->
-    </main>
+        <div id="page-overview" class="page-panel">
+          <section class="pipeline-panel" id="pipelineSection">
+            <div class="panel-head">
+              <h2>一键需求发现</h2>
+              <span class="status-pill" id="pipelineStatus">空闲</span>
+            </div>
+            <div class="pipeline-body">
+              <div class="pipeline-config">
+                <div class="pipeline-field pipeline-platforms">
+                  <span class="pipeline-label">平台</span>
+                  <div class="chip-group" id="pipelinePlatforms">
+                    <label class="choice-chip"><input type="checkbox" value="xhs" checked />小红书</label>
+                    <label class="choice-chip"><input type="checkbox" value="tieba" checked />贴吧</label>
+                    <label class="choice-chip"><input type="checkbox" value="zhihu" checked />知乎</label>
+                    <label class="choice-chip"><input type="checkbox" value="dy" />抖音</label>
+                    <label class="choice-chip"><input type="checkbox" value="ks" />快手</label>
+                    <label class="choice-chip"><input type="checkbox" value="bili" />Bilibili</label>
+                    <label class="choice-chip"><input type="checkbox" value="wb" />微博</label>
+                  </div>
+                </div>
+                <div class="pipeline-field">
+                  <span class="pipeline-label">每组关键词数</span>
+                  <div class="segmented" id="pipelineKeywordCount">
+                    <label><input type="radio" name="pipelineKeywordCount" value="1" />1</label>
+                    <label><input type="radio" name="pipelineKeywordCount" value="2" />2</label>
+                    <label><input type="radio" name="pipelineKeywordCount" value="3" checked />3</label>
+                    <label><input type="radio" name="pipelineKeywordCount" value="5" />5</label>
+                  </div>
+                </div>
+                <label class="pipeline-field pipeline-number">
+                  <span class="pipeline-label">单平台最大内容</span>
+                  <input id="pipelineMaxNotes" type="number" value="15" min="1" max="100" />
+                </label>
+              </div>
+              <div class="pipeline-actions">
+                <button id="startPipelineBtn" class="primary">▶ 开始</button>
+                <button id="refreshPipelineBtn">刷新</button>
+              </div>
+            </div>
+            <div class="pipeline-result" id="pipelineResult" hidden></div>
+          </section>
+
+          <section class="panel crawler-panel" id="crawlerSection">
+              <div class="panel-head">
+                <div>
+                  <h2>本机直接采集</h2>
+                  <p class="panel-subtitle">配置采集目标，确认范围后启动任务。</p>
+                </div>
+                <div class="actions">
+                  <span class="status-pill" id="crawlerStatusText">状态：读取中</span>
+                  <button id="refreshCrawlerBtn">刷新状态</button>
+                  <button id="stopCrawlerBtn">停止采集</button>
+                  <button id="startCrawlerBtn" class="primary">启动采集</button>
+                </div>
+              </div>
+              <div class="crawler-workbench">
+                <form class="control-form" id="crawlerForm">
+                  <section class="form-section">
+                    <div class="section-title">
+                      <h3>采集目标</h3>
+                    </div>
+                    <div class="form-grid target-grid">
+                      <label>平台
+                        <select name="platform">
+                          <option value="xhs">小红书</option>
+                          <option value="dy">抖音</option>
+                          <option value="ks">快手</option>
+                          <option value="bili">Bilibili</option>
+                          <option value="wb">微博</option>
+                          <option value="tieba">贴吧</option>
+                          <option value="zhihu">知乎</option>
+                        </select>
+                      </label>
+                      <label>采集类型
+                        <select name="crawler_type" id="crawlerType">
+                          <option value="search">关键词</option>
+                          <option value="detail">指定ID</option>
+                          <option value="creator">创作者</option>
+                        </select>
+                      </label>
+                      <label>行业类型
+                        <select name="industry_type">
+                          <option value="general">通用行业</option>
+                          <option value="ecommerce">电商零售</option>
+                          <option value="local_life">本地生活</option>
+                          <option value="food">餐饮食品</option>
+                          <option value="travel">旅游出行</option>
+                          <option value="education">教育培训</option>
+                          <option value="beauty">美妆个护</option>
+                          <option value="mother_baby">母婴亲子</option>
+                          <option value="healthcare">医疗健康</option>
+                          <option value="home">家居家装</option>
+                          <option value="real_estate">房产物业</option>
+                          <option value="auto">汽车出行</option>
+                          <option value="finance">金融保险</option>
+                          <option value="enterprise">企业服务</option>
+                          <option value="recruitment">招聘职场</option>
+                          <option value="technology">数码科技</option>
+                          <option value="game">游戏娱乐</option>
+                          <option value="culture">文旅内容</option>
+                          <option value="agriculture">农业生鲜</option>
+                          <option value="sports">运动户外</option>
+                          <option value="fashion">服饰鞋包</option>
+                          <option value="pet">宠物服务</option>
+                        </select>
+                      </label>
+                      <label>登录方式
+                        <select name="login_type">
+                          <option value="qrcode">二维码 / 无需登录</option>
+                          <option value="phone">手机号</option>
+                          <option value="cookie">Cookie（不在页面输入）</option>
+                        </select>
+                      </label>
+                      <label class="mode-field wide-field" data-mode="search">关键词
+                        <input name="keywords" placeholder="多个关键词用英文逗号分隔，例如：露营装备, 亲子旅行" />
+                      </label>
+                      <label class="mode-field wide-field" data-mode="detail">指定ID
+                        <input name="specified_ids" placeholder="多个 ID 用英文逗号分隔" />
+                      </label>
+                      <label class="mode-field wide-field" data-mode="creator">创作者ID
+                        <input name="creator_ids" placeholder="多个创作者 ID 用英文逗号分隔" />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section class="form-section">
+                    <div class="section-title">
+                      <h3>范围与输出</h3>
+                      <span>控制数量、评论和保存格式</span>
+                    </div>
+                    <div class="form-grid range-grid">
+                      <label>最大内容数
+                        <input name="max_notes_count" type="number" min="1" max="10000" value="50" />
+                      </label>
+                      <label>单条最大评论数
+                        <input name="max_comments_count" type="number" min="1" max="10000" placeholder="可选" />
+                      </label>
+                      <label>起始页
+                        <input name="start_page" type="number" min="1" value="1" />
+                      </label>
+                      <label>保存格式
+                        <select name="save_option">
+                          <option value="jsonl">JSONL</option>
+                          <option value="csv">CSV</option>
+                          <option value="sqlite">SQLite</option>
+                          <option value="json">JSON</option>
+                          <option value="excel">Excel</option>
+                        </select>
+                      </label>
+                    </div>
+                  </section>
+
+                  <section class="form-section compact-section">
+                    <div class="section-title">
+                      <h3>采集选项</h3>
+                    </div>
+                    <div class="option-grid">
+                      <label class="checkline"><input name="enable_comments" type="checkbox" checked /> 采集一级评论</label>
+                      <label class="checkline"><input name="enable_sub_comments" type="checkbox" /> 采集二级评论</label>
+                      <label class="checkline"><input name="headless" type="checkbox" /> 无头浏览器</label>
+                      <label class="checkline"><input name="confirm_public" type="checkbox" checked /> 我确认仅采集公开内容并遵守平台规则</label>
+                    </div>
+                  </section>
+                </form>
+              </div>
+              <div class="inline-note">页面不会保存 Cookie 或账号信息。正式采集前请确认只采集公开内容。</div>
+              <pre class="command-box preview-box" id="crawlerPayloadPreview" hidden>等待填写采集参数。</pre>
+            </section>
+
+          <section class="panel log-panel">
+            <div class="panel-head">
+              <h2>运行日志（实时）</h2>
+              <div class="actions">
+                <label><input type="checkbox" id="autoScroll" checked /> 自动滚动</label>
+                <label><input type="checkbox" id="errorsOnly" /> 仅错误</label>
+                <select id="logSource">
+                  <option value="all">全部来源</option>
+                  <option value="pipeline">一键需求</option>
+                  <option value="feishu">历史任务</option>
+                  <option value="crawler">本机采集</option>
+                </select>
+                <button id="clearLogsBtn">清空</button>
+              </div>
+            </div>
+            <div class="terminal" id="logBox"></div>
+          </section>
+        </div>
+
+        <div id="page-analysis" class="page-panel" style="display:none;">
+          <section class="panel analysis-report-panel" id="analysisReportSection">
+            <div class="panel-head">
+              <h2>分析报告</h2>
+              <div class="actions">
+                <span class="status-pill" id="analysisReportStatus">暂无报告</span>
+                <button id="clearAnalysisReportBtn">清空报告</button>
+              </div>
+            </div>
+
+            <div class="report-summary">
+              <div class="report-stat">
+                <div class="report-stat-icon blue">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.6"/><path d="M6.5 7.5h7M6.5 10.5h7M6.5 13.5h4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                </div>
+                <div class="report-stat-body">
+                  <span>总记录</span>
+                  <strong id="reportTotal">0</strong>
+                </div>
+              </div>
+              <div class="report-stat">
+                <div class="report-stat-icon green">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 14V8l4 3 4-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="7" cy="11" r="1.3" fill="currentColor"/><circle cx="11" cy="5" r="1.3" fill="currentColor"/></svg>
+                </div>
+                <div class="report-stat-body">
+                  <span>需求分类</span>
+                  <strong id="reportCategories">0</strong>
+                </div>
+              </div>
+              <div class="report-stat">
+                <div class="report-stat-icon purple">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.5 5h5l-4 3.5 1.5 5L10 12.5 5 15.5l1.5-5L2.5 7h5L10 2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                </div>
+                <div class="report-stat-body">
+                  <span>AI 方案</span>
+                  <strong id="reportSolutions">0</strong>
+                </div>
+              </div>
+              <div class="report-stat">
+                <div class="report-stat-icon amber">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 10a6 6 0 1112 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M10 6v4l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="16" r="1.2" fill="currentColor"/></svg>
+                </div>
+                <div class="report-stat-body">
+                  <span>Webhook</span>
+                  <strong id="reportWebhook">未发送</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="report-body-layout">
+              <div class="report-filter-sidebar" id="productTypeFilter">
+                <div class="filter-sidebar-title">产品类型</div>
+                <button class="filter-btn active" data-filter="all">全部</button>
+                <button class="filter-btn" data-filter="小程序">小程序</button>
+                <button class="filter-btn" data-filter="网站">网站</button>
+                <button class="filter-btn" data-filter="APP">APP</button>
+                <button class="filter-btn" data-filter="脚本">脚本</button>
+                <button class="filter-btn" data-filter="Chrome插件">Chrome 插件</button>
+                <button class="filter-btn" data-filter="自动化工具">自动化工具</button>
+                <button class="filter-btn" data-filter="微信机器人">微信机器人</button>
+                <button class="filter-btn" data-filter="命令行工具">命令行工具</button>
+              </div>
+              <div class="report-table-area">
+                <div class="table-wrap report-table-wrap">
+                  <table class="report-table">
+                    <thead>
+                      <tr>
+                        <th style="width:40px">#</th>
+                        <th>痛点分类</th>
+                        <th style="width:72px">频次</th>
+                        <th>AI 产品方案</th>
+                      </tr>
+                    </thead>
+                    <tbody id="analysisReportRows">
+                      <tr><td colspan="4" class="empty">暂无分析报告。在"需求库"选择导出文件后生成报告。</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+      </main>
     </div>
 
     <dialog id="taskDialog">
@@ -366,10 +553,21 @@
         </label>
         <label class="checkline"><input name="enable_comments" type="checkbox" checked /> 采集一级评论</label>
         <label class="checkline"><input name="enable_sub_comments" type="checkbox" /> 采集二级评论</label>
-        <button class="primary wide" id="submitTaskBtn" type="submit">保存到飞书任务表</button>
+        <button class="primary wide" id="submitTaskBtn" type="submit">保存任务</button>
       </form>
     </dialog>
 
-    <script src="/static/dashboard.js"></script>
+    <script src="/static/dashboard.js?v=20260628-11"></script>
+
+    <dialog id="solutionDialog">
+      <div class="panel-head solution-dialog-head">
+        <h2 id="solutionDialogTitle">方案详情</h2>
+        <button id="closeSolutionDialogBtn" type="button">关闭</button>
+      </div>
+      <div class="solution-detail" id="solutionDetailContent">
+        <p class="empty">未选择方案。</p>
+      </div>
+    </dialog>
+
   </body>
 </html>

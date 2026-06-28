@@ -19,10 +19,10 @@ echo [2/3] Waiting...
 ping -n 4 127.0.0.1 >nul
 
 echo [3/3] Opening Dashboard...
-start http://localhost:8080
+start http://localhost:8081
 
 echo.
-echo MediaCrawler started! Dashboard: http://localhost:8080
+echo MediaCrawler started! Dashboard: http://localhost:8081
 echo.
 timeout /t 5 /nobreak >nul
 exit

@@ -68,6 +68,7 @@ class CrawlerStartRequest(BaseModel):
     keywords: str = ""  # Keywords for search mode
     specified_ids: str = ""  # Post/video ID list for detail mode, comma-separated
     creator_ids: str = ""  # Creator ID list for creator mode, comma-separated
+    industry_type: str = "general"
     start_page: int = 1
     enable_comments: bool = True
     enable_sub_comments: bool = False

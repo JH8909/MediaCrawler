@@ -31,7 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from .routers import crawler_router, data_router, feishu_router, feishu_webhook_router, llm_config_router, local_tasks_router, websocket_router
+from .routers import crawler_router, data_router, feishu_webhook_router, llm_config_router, local_tasks_router, websocket_router, pipeline_router, auto_demand_router
 
 # Load .env file for Feishu credentials
 # Try python-dotenv first, fall back to manual parser
@@ -80,11 +80,12 @@ app.add_middleware(
 app.include_router(crawler_router, prefix="/api")
 app.include_router(data_router, prefix="/api")
 
-app.include_router(feishu_router, prefix="/api")
 app.include_router(feishu_webhook_router, prefix="/api")
 app.include_router(llm_config_router, prefix="/api")
 app.include_router(local_tasks_router, prefix="/api")
 app.include_router(websocket_router, prefix="/api")
+app.include_router(pipeline_router, prefix="/api")
+app.include_router(auto_demand_router, prefix="/api")
 
 @app.get("/")
 async def serve_frontend():
@@ -223,4 +224,4 @@ if os.path.exists(WEBUI_DIR):
     app.mount("/static", StaticFiles(directory=WEBUI_DIR), name="webui-static")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8081)

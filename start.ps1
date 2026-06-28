@@ -15,8 +15,8 @@ Start-Process -FilePath "uv" -ArgumentList "run python -m api.main" -WorkingDire
 Start-Sleep -Seconds 3
 
 Write-Host "[2/3] Opening Dashboard..." -ForegroundColor Yellow
-Start-Process "http://localhost:8080"
+Start-Process "http://localhost:8081"
 
 Write-Host "[3/3] Done!"
-Write-Host "Dashboard: http://localhost:8080" -ForegroundColor Green
+Write-Host "Dashboard: http://localhost:8081" -ForegroundColor Green
 Read-Host "Press Enter to exit"

@@ -326,42 +326,32 @@ class CrawlerManager:
                                     we = self._create_log_entry(f"Solution gen: {sol_exc}", "warning")
                                     await self._push_log(we)
 
-                            app_token = os.environ.get("FEISHU_APP_TOKEN", "")
-                            table_id = os.environ.get("FEISHU_TABLE_ID", "")
-                            if app_token and table_id:
-                                try:
-                                    from integrations.feishu_client import FeishuBitableClient
-                                    from integrations.field_mapper import map_record_to_feishu_fields
-                                    app_id = os.environ.get("FEISHU_APP_ID", "")
-                                    app_secret = os.environ.get("FEISHU_APP_SECRET", "")
-                                    client = FeishuBitableClient(app_id, app_secret, app_token, table_id)
-                                    bitable_records = []
-                                    for rec in classified:
-                                        mapped = map_record_to_feishu_fields(rec)
-                                        if mapped:
-                                            cats = rec.get("categories", [])
-                                            mapped["需求分类"] = ", ".join(cats) if cats else "未分类"
-                                            bitable_records.append(mapped)
-                                    if bitable_records:
-                                        client.batch_create(bitable_records)
-                                        we = self._create_log_entry(f"Bitable: {len(bitable_records)} synced", "success")
-                                        await self._push_log(we)
-                                except Exception as bt_exc:
-                                    we = self._create_log_entry(f"Bitable: {bt_exc}", "warning")
-                                    await self._push_log(we)
-
                             items = []
                             for r in records[:5]:
                                 items.append({"title": r.get("title",""), "desc": r.get("desc","")[:80], "nickname": r.get("nickname",""), "likes": r.get("liked_count","0"), "url": r.get("note_url","")})
 
                             wu = get_webhook_url()
                             if wu:
-                                send_crawl_summary(platform=pf, keywords=kw, content_items=items[:5], webhook_url=wu)
-                                we = self._create_log_entry("Summary sent", "info")
+                                ct = self.current_config.crawler_type.value if self.current_config else "unknown"
+                                summary_sent = send_crawl_summary(
+                                    platform=pf,
+                                    crawler_type=ct,
+                                    keywords=kw,
+                                    stats={"success": rcount, "skipped": 0, "failed": 0},
+                                    content_items=items[:5],
+                                    webhook_url=wu,
+                                )
+                                we = self._create_log_entry(
+                                    "Summary sent" if summary_sent else "Summary send failed",
+                                    "info" if summary_sent else "warning",
+                                )
                                 await self._push_log(we)
                                 if agg:
-                                    send_analysis_report(aggregation=agg, solutions_data=solutions_data, keyword=kw, platform=pf, total=rcount, webhook_url=wu)
-                                    we = self._create_log_entry("Analysis report sent", "success")
+                                    analysis_sent = send_analysis_report(aggregation=agg, solutions_data=solutions_data, keyword=kw, platform=pf, total=rcount, webhook_url=wu)
+                                    we = self._create_log_entry(
+                                        "Analysis report sent" if analysis_sent else "Analysis report send failed",
+                                        "success" if analysis_sent else "warning",
+                                    )
                                     await self._push_log(we)
 
                     except Exception as pipe_exc:
@@ -377,8 +367,11 @@ class CrawlerManager:
                             ct = self.current_config.crawler_type.value if self.current_config else "unknown"
                             kw = self.current_config.keywords if self.current_config else ""
                             from integrations.feishu_webhook import send_simple_message
-                            send_simple_message(title="Collection Failed", content=f"Platform: {pf} | Type: {ct} | Keyword: {kw}", template="red", webhook_url=wu)
-                            we = self._create_log_entry("Webhook sent (failure)", "warning")
+                            failure_sent = send_simple_message(title="Collection Failed", content=f"Platform: {pf} | Type: {ct} | Keyword: {kw}", template="red", webhook_url=wu)
+                            we = self._create_log_entry(
+                                "Failure webhook sent" if failure_sent else "Failure webhook send failed",
+                                "warning",
+                            )
                             await self._push_log(we)
                     except Exception:
                         pass
