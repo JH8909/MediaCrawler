@@ -482,11 +482,38 @@
               </div>
               <div class="v5-insight-card">
                 <h2>竞品分析</h2>
-                <div class="v5-comp-visual">
-                  <div class="v5-radar-card">
-                    <div class="v5-radar-title"><b>能力对比</b><span>分数越高越强</span></div>
-                    <div class="v5-comp-bars" id="v5CompBars"></div>
+
+                <!-- 1. 竞争定位图 -->
+                <div class="v5-comp-section">
+                  <div class="v5-radar-title"><b>竞争定位图</b><span>交易能力 × 决策能力，看我们位置</span></div>
+                  <div class="v5-pos-map" id="v5PosMap">
+                    <div class="v5-pos-axes">
+                      <span class="v5-pos-yl">决策能力 ↑</span>
+                      <span class="v5-pos-xb">交易能力 →</span>
+                    </div>
                   </div>
+                </div>
+
+                <!-- 2. 功能热力图 -->
+                <div class="v5-comp-section">
+                  <div class="v5-radar-title"><b>功能热力图</b><span>0-5 分，颜色越深能力越强</span></div>
+                  <div class="v5-heatmap-wrap"><table class="v5-heatmap" id="v5Heatmap"></table></div>
+                </div>
+
+                <!-- 3. 能力条形图 -->
+                <div class="v5-comp-section">
+                  <div class="v5-radar-title"><b>能力对比条形图</b><span>我们 vs 竞品，突出决策优势</span></div>
+                  <div class="v5-comp-bars" id="v5CompBars"></div>
+                </div>
+
+                <!-- 4. 竞品强项 vs 我们强项 -->
+                <div class="v5-comp-section">
+                  <div class="v5-str-grid" id="v5StrGrid"></div>
+                </div>
+
+                <!-- 5. 3个核心缺口 -->
+                <div class="v5-comp-section">
+                  <div class="v5-radar-title"><b>3个核心缺口</b><span>我们的差异化切入点</span></div>
                   <div class="v5-gap-focus" id="v5GapFocus"></div>
                 </div>
               </div>
@@ -573,7 +600,7 @@
       </form>
     </dialog>
 
-    <script src="/static/dashboard.js?v=20260628-27"></script>
+    <script src="/static/dashboard.js?v=20260628-28"></script>
 
     <dialog id="solutionDialog" class="solution-dialog">
       <div class="panel-head solution-dialog-head">

@@ -570,37 +570,195 @@ function renderV5Todo(agg, suf) {
 }
 
 function renderV5Competitive(agg) {
-  var dims = agg.slice(0, 5);
-  var maxCount = dims.length ? Math.max.apply(null, dims.map(function(a) { return a.count || 0; })) : 1;
-  var colors = ['gray','','green','orange',''];
-  var barsHtml = dims.map(function(d, i) {
-    var pct = Math.round(((d.count || 0) / maxCount) * 100);
-    var cls = colors[i % colors.length];
-    return '<div class="v5-comp-row"><span class="v5-comp-name">' + escapeHtml(d.category) + '</span><div class="v5-comp-track"><div class="v5-comp-fill ' + cls + '" style="width:' + pct + '%"></div></div><span class="v5-comp-score">' + (d.count || 0) + '</span></div>';
-  }).join('');
-  if (!barsHtml) barsHtml = '<p style="color:var(--muted);font-size:12px">暂无数据</p>';
-  var compBars = document.getElementById('v5CompBars');
-  if (compBars) compBars.innerHTML = barsHtml;
-
-  var items = [];
-  if (agg.length >= 3) {
-    var top = agg[0];
-    items.push({ icon: 'b1', label: '竞品强在数据', text: '但多数停留在看板和关键词展示。' });
-    items.push({ icon: 'b2', label: '机会在决策', text: '把评论转成"做什么产品"和MVP边界。' });
-    items.push({ icon: 'b3', label: '壁垒在证据链', text: '每个结论绑定原始评论，增强可信度。' });
-  } else {
-    items.push({ icon: 'b1', label: '数据积累', text: '需要更多数据来确认方向。' });
-    items.push({ icon: 'b2', label: '聚焦需求', text: '持续关注用户主流讨论集中的方向。' });
-    items.push({ icon: 'b3', label: 'AI 可解决度', text: '多数需求可通过 AI 方案满足。' });
-  }
-  var gapHtml = items.map(function(g) {
-    return '<div class="v5-gap-pill"><div class="v5-gap-icon ' + g.icon + '">' + g.icon.replace('b','') + '</div><div><b>' + escapeHtml(g.label) + '</b><span>' + escapeHtml(g.text) + '</span></div></div>';
-  }).join('');
-  var gapFocus = document.getElementById('v5GapFocus');
-  if (gapFocus) gapFocus.innerHTML = gapHtml;
+  // ── 1. 竞争定位图 ──
+  renderV5PosMap(agg);
+  // ── 2. 功能热力图 ──
+  renderV5Heatmap(agg);
+  // ── 3. 能力对比条形图 ──
+  renderV5CapBars(agg);
+  // ── 4. 竞品强项 vs 我们强项 ──
+  renderV5StrengthGrid(agg);
+  // ── 5. 3个核心缺口 ──
+  renderV5CoreGaps(agg);
 
   var row = document.getElementById('v5InsightRow');
   if (row) row.style.display = '';
+}
+
+function renderV5PosMap(agg) {
+  var map = document.getElementById('v5PosMap');
+  if (!map) return;
+  // Remove old dots
+  map.querySelectorAll('.v5-pos-dot,.v5-pos-label,.v5-pos-legend').forEach(function(e) { e.remove(); });
+
+  // Position data: {name, trade (x), decision (y), cls}
+  var dots = [
+    { name: '我们 (MediaCrawler)', trade: 62, decision: 84, cls: 'us', color: '#3867ff' },
+    { name: '贝壳/链家', trade: 90, decision: 55, cls: '', color: '#18a766' },
+    { name: '安居客', trade: 82, decision: 38, cls: '', color: '#ffad21' },
+    { name: '普通计算器', trade: 22, decision: 12, cls: '', color: '#9aa7ba' },
+  ];
+
+  dots.forEach(function(d) {
+    var dot = document.createElement('span');
+    dot.className = 'v5-pos-dot ' + d.cls;
+    var size = d.cls === 'us' ? 22 : 16;
+    dot.style.cssText = 'left:' + d.trade + '%;top:' + (100 - d.decision) + '%;width:' + size + 'px;height:' + size + 'px;background:' + d.color;
+    dot.title = d.name + ' (交易:' + d.trade + ' 决策:' + d.decision + ')';
+    map.appendChild(dot);
+
+    var label = document.createElement('span');
+    label.className = 'v5-pos-label ' + d.cls;
+    label.style.cssText = 'left:' + d.trade + '%;top:' + (100 - d.decision) + '%';
+    label.textContent = d.name;
+    map.appendChild(label);
+  });
+
+  // Legend
+  var legend = document.createElement('div');
+  legend.className = 'v5-pos-legend';
+  legend.innerHTML = '<span class="v5-pos-leg"><span style="background:#3867ff"></span>我们</span><span class="v5-pos-leg"><span style="background:#18a766"></span>贝壳/链家</span><span class="v5-pos-leg"><span style="background:#ffad21"></span>安居客</span><span class="v5-pos-leg"><span style="background:#9aa7ba"></span>普通计算器</span>';
+  map.appendChild(legend);
+}
+
+function renderV5Heatmap(agg) {
+  var table = document.getElementById('v5Heatmap');
+  if (!table) return;
+
+  // Players and capability dimensions
+  var players = ['我们', '贝壳/链家', '安居客', '普通计算器'];
+  var dims = [
+    { key: 'data_show',  label: '数据展示',    scores: [4, 5, 4, 2] },
+    { key: 'need_extract', label: '需求提炼',   scores: [5, 3, 2, 1] },
+    { key: 'explain',    label: '决策解释',    scores: [5, 2, 1, 1] },
+    { key: 'risk',       label: '风险评分',    scores: [5, 1, 1, 0] },
+    { key: 'evidence',   label: '证据链',     scores: [5, 2, 1, 0] },
+    { key: 'mvp',        label: 'MVP转化',    scores: [4, 3, 2, 1] },
+    { key: 'report',     label: '自动报告',    scores: [4, 4, 3, 1] },
+  ];
+
+  var html = '<thead><tr><th></th>';
+  for (var p = 0; p < players.length; p++) {
+    html += '<th>' + players[p] + '</th>';
+  }
+  html += '</tr></thead><tbody>';
+  for (var d = 0; d < dims.length; d++) {
+    html += '<tr><td>' + dims[d].label + '</td>';
+    for (var p = 0; p < players.length; p++) {
+      var score = dims[d].scores[p];
+      var cls = 'v5-hm-' + score;
+      if (p === 0) cls += ' v5-hm-us';
+      html += '<td class="' + cls + '">' + score + '</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody>';
+  table.innerHTML = html;
+}
+
+function renderV5CapBars(agg) {
+  var compBars = document.getElementById('v5CompBars');
+  if (!compBars) return;
+
+  // Our capability dimensions vs industry — static strategic dimensions
+  var dims = [
+    { name: '决策解释', us: 92, ind: 35, cls: '' },
+    { name: '风险评分', us: 88, ind: 28, cls: 'green' },
+    { name: '证据链',  us: 86, ind: 22, cls: 'green' },
+    { name: '需求提炼', us: 82, ind: 48, cls: '' },
+    { name: 'MVP转化',  us: 72, ind: 55, cls: 'orange' },
+    { name: '数据展示', us: 68, ind: 80, cls: 'gray' },
+    { name: '自动报告', us: 64, ind: 75, cls: 'gray' },
+  ];
+
+  var html = '';
+  for (var i = 0; i < dims.length; i++) {
+    var d = dims[i];
+    html += '<div class="v5-comp-row">' +
+      '<span class="v5-comp-name">' + d.name + '</span>' +
+      '<div class="v5-comp-track">' +
+        '<div class="v5-comp-fill ' + d.cls + '" style="width:' + d.us + '%"></div>' +
+        '<div style="position:absolute;left:' + d.ind + '%;top:0;bottom:0;width:0;border-left:2px dashed #9aa7ba;pointer-events:none;" title="行业均值:' + d.ind + '"></div>' +
+      '</div>' +
+      '<span class="v5-comp-score">' + d.us + '</span>' +
+    '</div>';
+  }
+  compBars.innerHTML = html;
+
+  // Style track for positioning
+  compBars.querySelectorAll('.v5-comp-track').forEach(function(tr) { tr.style.position = 'relative'; });
+
+  // Legend
+  var legend = document.createElement('div');
+  legend.style.cssText = 'margin-top:8px;font-size:11px;color:var(--muted);display:flex;gap:14px;';
+  legend.innerHTML = '<span>实心 = 我们</span><span style="border-left:2px dashed #9aa7ba;padding-left:6px;">虚线 = 行业均值</span>';
+  compBars.appendChild(legend);
+}
+
+function renderV5StrengthGrid(agg) {
+  var grid = document.getElementById('v5StrGrid');
+  if (!grid) return;
+
+  var items = [];
+  if (agg.length >= 3) {
+    items.push({
+      side: 'weak', h4c: 'red', h4: '竞品强项',
+      points: ['数据展示和报表全面', '交易/流量数据积累深', '品牌信任和用户基数大', '市场运营成熟']
+    });
+    items.push({
+      side: 'strong', h4c: 'green', h4: '我们强项',
+      points: ['AI驱动的决策解释', '需求→方案自动转化', '每条结论绑定原始评论证据', '风险评分和MVP边界建议']
+    });
+  } else {
+    items.push({
+      side: 'weak', h4c: 'red', h4: '竞品强项', points: ['数据采集全面', '用户基数大', '品牌信任强']
+    });
+    items.push({
+      side: 'strong', h4c: 'green', h4: '我们强项', points: ['AI驱动分析', '需求转产品', '证据链支撑']
+    });
+  }
+
+  var html = items.map(function(box) {
+    return '<div class="v5-str-box ' + box.side + '"><h4 class="' + box.h4c + '">' + box.h4 + '</h4><ul>' +
+      box.points.map(function(p) { return '<li>' + p + '</li>'; }).join('') +
+      '</ul></div>';
+  }).join('');
+  grid.innerHTML = html;
+}
+
+function renderV5CoreGaps(agg) {
+  var gapFocus = document.getElementById('v5GapFocus');
+  if (!gapFocus) return;
+
+  var items = [];
+  if (agg.length >= 3) {
+    items.push({
+      icon: 'b1', label: '信息 → 判断',
+      text: '竞品提供数据和信息，我们提供"能不能做"的判断。把评论转成产品决策，而不是停在看板。'
+    });
+    items.push({
+      icon: 'b2', label: '计算 → 解释',
+      text: '竞品停留在ROI计算器，我们给出为什么这个风险分值、为什么先做这个功能的解释。'
+    });
+    items.push({
+      icon: 'b3', label: '平台信任 → 证据信任',
+      text: '竞品靠品牌背书，我们用每条原始评论绑定结论，让决策者自己验证可信度。'
+    });
+  } else {
+    items.push({
+      icon: 'b1', label: '信息到判断', text: '把数据转为可执行的产品决策。'
+    });
+    items.push({
+      icon: 'b2', label: '计算到解释', text: '不只给数字，给出原因和风险分析。'
+    });
+    items.push({
+      icon: 'b3', label: '信任到证据', text: '每个结论都可追溯到原始数据。'
+    });
+  }
+
+  gapFocus.innerHTML = items.map(function(g) {
+    return '<div class="v5-gap-pill"><div class="v5-gap-icon ' + g.icon + '">' + g.icon.replace('b','') + '</div><div><b>' + escapeHtml(g.label) + '</b><span>' + escapeHtml(g.text) + '</span></div></div>';
+  }).join('');
 }
 
 function renderV5Table(rows) {

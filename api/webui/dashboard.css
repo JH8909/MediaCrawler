@@ -1918,6 +1918,50 @@ dialog::backdrop {
 .v5-gap-icon.b3 { background:#fff5dd; color:#b26d00; }
 .v5-gap-pill b { display:block; font-size:13px; margin-bottom:4px; }
 .v5-gap-pill span { display:block; color:var(--muted); font-size:12px; line-height:1.45; }
+
+/* V5 竞品分析 — 竞争定位图 */
+.v5-comp-section { margin-bottom:16px; }
+.v5-comp-section:last-child { margin-bottom:0; }
+.v5-pos-map { height:200px; border:1px dashed #cfd8e7; border-radius:17px; position:relative; background:linear-gradient(#edf2f8 1px,transparent 1px) 0 50%/100% 1px no-repeat,linear-gradient(90deg,#edf2f8 1px,transparent 1px) 50% 0/1px 100% no-repeat,#fff; }
+.v5-pos-axes { position:absolute; inset:0; }
+.v5-pos-yl { position:absolute; left:8px; top:6px; font-size:11px; color:var(--text-disabled); }
+.v5-pos-xb { position:absolute; right:8px; bottom:6px; font-size:11px; color:var(--text-disabled); }
+.v5-pos-dot { position:absolute; border-radius:50%; border:3px solid #fff; box-shadow:0 6px 16px rgba(0,0,0,.18); cursor:pointer; }
+.v5-pos-dot.us { border-color:#fff; box-shadow:0 0 0 4px rgba(56,103,255,.35),0 6px 16px rgba(0,0,0,.18); }
+.v5-pos-dot.us:after { content:""; position:absolute; inset:-2px; border-radius:50%; border:2px dashed rgba(56,103,255,.5); animation:v5-pulse 2s infinite; }
+@keyframes v5-pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.35);opacity:.25} }
+.v5-pos-label { position:absolute; font-size:11px; font-weight:900; color:#34445e; white-space:nowrap; transform:translate(-50%,18px); text-align:center; }
+.v5-pos-label.us { color:var(--blue); font-size:12px; }
+.v5-pos-legend { display:flex; gap:14px; margin-top:10px; flex-wrap:wrap; }
+.v5-pos-leg { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); }
+.v5-pos-leg span { width:10px; height:10px; border-radius:50%; }
+
+/* V5 竞品分析 — 功能热力图 */
+.v5-heatmap-wrap { overflow-x:auto; }
+.v5-heatmap { width:100%; border-collapse:collapse; font-size:12px; }
+.v5-heatmap th { background:#f8f9fc; color:#5d6c82; text-align:left; padding:8px 10px; border:1px solid var(--line); white-space:nowrap; font-weight:850; }
+.v5-heatmap th:first-child { min-width:90px; }
+.v5-heatmap td { text-align:center; padding:7px 8px; border:1px solid var(--line); font-weight:850; font-size:12px; white-space:nowrap; }
+.v5-heatmap td:first-child { text-align:left; color:#34445e; font-weight:900; }
+.v5-hm-0 { background:#f6f8fb; color:#c4cfdf; }
+.v5-hm-1 { background:#f0f4ff; color:#8aa5ff; }
+.v5-hm-2 { background:#dbe4ff; color:#5f7cf0; }
+.v5-hm-3 { background:#b8cbff; color:#3867ff; }
+.v5-hm-4 { background:#8ea8ff; color:#1849e0; }
+.v5-hm-5 { background:#6b8eff; color:#fff; }
+.v5-hm-us { border:2px solid var(--blue)!important; box-shadow:inset 0 0 0 1px rgba(56,103,255,.3); }
+
+/* V5 竞品分析 — 强项对比网格 */
+.v5-str-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.v5-str-box { border:1px solid var(--line); border-radius:14px; padding:12px; }
+.v5-str-box.weak { background:#fff0f0; border-color:#ffd4d4; }
+.v5-str-box.strong { background:#eaf8f1; border-color:#b7e8cf; }
+.v5-str-box h4 { margin:0 0 8px; font-size:13px; font-weight:950; }
+.v5-str-box h4.red { color:var(--red); }
+.v5-str-box h4.green { color:var(--green); }
+.v5-str-box ul { margin:0; padding:0 0 0 16px; font-size:12px; color:#394960; line-height:1.7; }
+.v5-str-box ul li { margin-bottom:3px; }
+.v5-str-box ul li b { color:var(--text); }
 .v5-empty { text-align:center; padding:48px 20px; }
 .v5-empty h3 { margin:0 0 8px; }
 .v5-empty p { color:var(--muted); max-width:400px; margin:0 auto 20px; line-height:1.6; }
