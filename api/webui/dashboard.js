@@ -12,6 +12,7 @@ const state = {
   analysisReport: null,
   lastDryRunTaskId: "",
   lastDryRunFilePath: "",
+  industryKeywords: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -76,6 +77,30 @@ async function loadConfig() {
       <strong>${escapeHtml(item.value)}</strong>
     </div>
   `).join("");
+}
+
+async function loadIndustryKeywords() {
+  try {
+    state.industryKeywords = await api("/api/config/industry-keywords");
+  } catch (e) {
+    state.industryKeywords = null;
+  }
+}
+
+function applyIndustryKeywords() {
+  const sel = document.querySelector('[name="industry_type"]');
+  const kwInput = document.querySelector('[name="keywords"]');
+  if (!sel || !kwInput || !state.industryKeywords) return;
+  const val = sel.value;
+  if (val === "general" || !val) {
+    kwInput.value = "";
+  } else {
+    const preset = state.industryKeywords[val];
+    if (preset && preset.keywords && preset.keywords.length) {
+      kwInput.value = preset.keywords.join(", ");
+    }
+  }
+  updateCrawlerPreview();
 }
 
 async function loadTasks() {
@@ -392,192 +417,227 @@ function normalizeReportRows(report) {
 // Color palette for product types
 var PRODUCT_COLORS = ["#3b72ff", "#16a06a", "#7c4dff", "#f5a524", "#f04438", "#0891b2", "#9333ea", "#db2777"];
 
+// ── V5 需求机会工作台 render (template match) ────────────────
 function renderAnalysisReport(report) {
   if (report === undefined) report = state.analysisReport;
   var hasReport = Boolean(report && report.total > 0);
 
-  // KPI cards
-  var el;
-  var agg = report && report.aggregation ? report.aggregation : [];
-  var total = report ? (report.total || 0) : 0;
-  var classifiedCount = report ? (report.classified_count || 0) : 0;
-  var solutionsCount = report ? (report.solutions || 0) : 0;
-  var hotCount = agg.filter(function(a) { return (a.hot_score || 0) >= 2; }).length;
-  el = document.getElementById('arReportTotal'); if(el) el.textContent = hasReport ? String(total) : '0';
-  el = document.getElementById('arReportNote'); if(el) el.textContent = hasReport ? '有效 ' + classifiedCount + ' / 已分类 ' + agg.length : '暂无数据';
-  el = document.getElementById('arReportCategories'); if(el) el.textContent = hasReport ? String(agg.length) : '0';
-  el = document.getElementById('arClassifiedNote'); if(el) el.textContent = hasReport ? '已聚类需求簇' : '未分类';
-  el = document.getElementById('arHotCount'); if(el) el.textContent = hasReport ? String(hotCount) : '0';
-  el = document.getElementById('arReportSolutions'); if(el) el.textContent = hasReport ? String(solutionsCount) : '0';
-  el = document.getElementById('arTopOpps'); if(el) el.textContent = hasReport ? String(Math.min(3, agg.length)) : '0';
-  el = document.getElementById('arWebhookStatus'); if(el) el.textContent = hasReport && report.webhook_sent ? '已发送' : '未发送';
-  el = document.getElementById('arGeneratedAt'); if(el) el.textContent = report && report.generated_at ? report.generated_at : '飞书通知';
-
-  // Show/hide sections
-  var sections = document.querySelectorAll('#arOpportunitySection, #arTableSection');
-  var emptyGuide = document.getElementById('arEmptyGuide');
-  sections.forEach(function(s) { s.style.display = hasReport ? '' : 'none'; });
-  if (emptyGuide) emptyGuide.style.display = hasReport ? 'none' : '';
-
+  var v5Content = document.getElementById('v5ReportContent');
+  var v5Empty = document.getElementById('v5Empty');
   if (!hasReport) {
-    document.getElementById('arSummaryText').textContent = '暂无分析数据。请在"需求库"中选择数据文件并点击"分析报告"生成报告，或等待采集完成后自动生成。';
-    document.getElementById('arNextSteps').innerHTML = '<div class="ar-mini-item"><span class="ar-rank">1</span><div><b>采集数据</b><p>在"数据采集"页面新建任务，选择平台和关键词。</p></div></div><div class="ar-mini-item"><span class="ar-rank">2</span><div><b>生成分析报告</b><p>采集完成后在"需求库"中点击分析报告按钮。</p></div></div><div class="ar-mini-item"><span class="ar-rank">3</span><div><b>查看结果</b><p>报告自动推送到此页面和飞书群。</p></div></div>';
-    document.getElementById('arBarChart').innerHTML = '<div class="ar-bar-row"><span class="ar-bar-name">暂无数据</span><div class="ar-bar-track"><div class="ar-bar-fill" style="width:100%"></div></div><span class="ar-bar-value">—</span></div>';
+    if (v5Content) v5Content.style.display = 'none';
+    if (v5Empty) v5Empty.style.display = '';
     return;
   }
+  if (v5Content) v5Content.style.display = '';
+  if (v5Empty) v5Empty.style.display = 'none';
 
-  // AI Summary
-  var top3Names = agg.slice(0, 3).map(function(a) { return a.category; });
-  var summaryText = "本批数据中，用户最集中关注" + (top3Names.length ? "「" + top3Names.join("」「") + "」" : "各个") + "方向。";
-  if (top3Names.length >= 2) summaryText += "优先建议围绕" + top3Names[0] + "和" + top3Names[1] + "开发产品方案。";
-  summaryText += "详细分类和AI产品建议见下方表格。";
-  document.getElementById('arSummaryText').textContent = summaryText;
-
-  var tagHtml = top3Names.map(function(n) { return '<span class="ar-tag ar-p0">核心：' + escapeHtml(n) + '</span>'; }).join('');
-  tagHtml += '<span class="ar-tag ar-ai">AI可解决度高</span>';
-  document.getElementById('arTagRow').innerHTML = tagHtml;
-
-  // Next steps
-  document.getElementById('arNextSteps').innerHTML =
-    '<div class="ar-mini-item"><span class="ar-rank">1</span><div><b>先做"' + escapeHtml(top3Names[0] || '未知') + '"方案</b><p>高频且AI可解决，验证核心功能即可。</p></div></div>' +
-    '<div class="ar-mini-item"><span class="ar-rank">2</span><div><b>补充代表评论证据链</b><p>每个需求簇保留5-10条原始内容，提升报告可信度。</p></div></div>' +
-    '<div class="ar-mini-item"><span class="ar-rank">3</span><div><b>导出到飞书/企微</b><p>把Top 3机会推送到群聊供团队讨论。</p></div></div>';
-
-  // Charts
-  renderBarChart(agg);
-  renderDonutChart(report);
-  renderQuadChart(agg);
-
-  // Opportunity cards
-  var oppHtml = '';
+  var agg = report.aggregation || [];
+  var suf = report.sufficiency;
+  var total = report.total || 0;
+  var solutionsCount = report.solutions || 0;
+  var classifiedCount = report.classified_count || 0;
   var rows = normalizeReportRows(report);
-  rows.slice(0, 6).forEach(function(r) {
-    oppHtml += '<div class="ar-opp-card"><div class="ar-opp-head"><h3>' + escapeHtml(r.category) + '</h3><span class="ar-prior ar-p0">' + escapeHtml(r.priority) + '</span></div>';
-    oppHtml += '<p class="ar-opp-desc">' + escapeHtml(r.solutionSummary || (r.count + '次提及，热度' + r.hotScore)) + '</p>';
-    if (r.mvpFeatures) oppHtml += '<ul class="ar-opp-list">' + r.mvpFeatures.split('、').map(function(f) { return '<li>' + escapeHtml(f) + '</li>'; }).join('') + '</ul>';
-    oppHtml += '</div>';
-  });
-  document.getElementById('arOpportunityGrid').innerHTML = oppHtml || '<p>暂无方案详情</p>';
 
-  // Detail table
-  renderReportTable(rows);
-
-  // Bind tabs
-  bindArTabs();
-  bindArSidebar();
-  bindArDrawer();
+  renderV5Gauge(suf);
+  renderV5ReadinessList(suf, total, agg);
+  renderV5Funnel(total, classifiedCount, agg.length, solutionsCount);
+  renderV5Bars(agg);
+  renderV5Matrix(agg);
+  renderV5Todo(agg, suf);
+  renderV5Competitive(agg);
+  renderV5Table(rows);
+  bindV5Drawer();
 }
 
-function renderBarChart(agg) {
-  var maxCount = agg.length ? Math.max.apply(null, agg.map(function(a) { return a.count || 0; })) : 1;
-  var html = '';
-  agg.slice(0, 8).forEach(function(item) {
-    var pct = Math.round(((item.count || 0) / maxCount) * 100);
-    html += '<div class="ar-bar-row"><span class="ar-bar-name">' + escapeHtml(item.category) + '</span><div class="ar-bar-track"><div class="ar-bar-fill" style="width:' + pct + '%"></div></div><span class="ar-bar-value">' + (item.count || 0) + '</span></div>';
-  });
-  if (!html) html = '<div class="ar-bar-row"><span class="ar-bar-name">暂无数据</span><div class="ar-bar-track"><div class="ar-bar-fill" style="width:100%"></div></div><span class="ar-bar-value">—</span></div>';
-  document.getElementById('arBarChart').innerHTML = html;
-}
-
-function renderDonutChart(report) {
-  var solutions = report && report.solutions_data ? report.solutions_data : [];
-  var typeCount = {};
-  solutions.forEach(function(s) {
-    (s.solutions || []).forEach(function(sol) {
-      var t = sol.product_type || sol.solution_type || "其他";
-      typeCount[t] = (typeCount[t] || 0) + 1;
-    });
-  });
-  var entries = Object.keys(typeCount);
-  if (!entries.length) {
-    document.getElementById('arDonut').style.background = '#edf2fa';
-    document.getElementById('arLegend').innerHTML = '<div class="ar-legend-item"><span>暂无数据</span><b>—</b></div>';
-    return;
+function renderV5Gauge(suf) {
+  var level = suf ? (suf.level || 1) : 1;
+  var color = suf ? (suf.color || '#faad14') : '#faad14';
+  var score = Math.round((level / 4) * 100);
+  var angle = (level / 4) * 360;
+  var gauge = document.getElementById('v5Gauge');
+  if (gauge) gauge.style.background = 'conic-gradient(' + color + ' 0deg ' + angle + 'deg, #edf2f8 ' + angle + 'deg 360deg)';
+  var levelEl = document.getElementById('v5GaugeLevel');
+  if (levelEl) levelEl.textContent = score;
+  var titleEl = document.getElementById('v5StageTitle');
+  if (titleEl) {
+    if (level <= 1) titleEl.textContent = '低成本验证优先';
+    else if (level <= 2) titleEl.textContent = '痛点已现，聚焦验证';
+    else if (level <= 3) titleEl.textContent = 'MVP 可行，加速落地';
+    else titleEl.textContent = '行业级数据，全面分析';
   }
-  var total = entries.reduce(function(s, k) { return s + typeCount[k]; }, 0);
-  var cumulative = 0;
-  var segments = entries.map(function(k, i) {
-    var pct = typeCount[k] / total;
-    var start = cumulative;
-    cumulative += pct;
-    return { name: k, count: typeCount[k], start: start, end: cumulative, color: PRODUCT_COLORS[i % PRODUCT_COLORS.length] };
-  });
-  var donutStr = segments.map(function(s) {
-    return s.color + ' ' + (s.start * 100).toFixed(0) + '% ' + (s.end * 100).toFixed(0) + '%';
-  }).join(', ');
-  document.getElementById('arDonut').style.background = 'conic-gradient(' + donutStr + ')';
-  document.getElementById('arLegend').innerHTML = segments.map(function(s) {
-    return '<div class="ar-legend-item"><span><i class="ar-dot" style="background:' + s.color + '"></i>' + escapeHtml(s.name) + '</span><b>' + s.count + '</b></div>';
+  var descEl = document.getElementById('v5StageDesc');
+  if (descEl && suf) descEl.textContent = suf.stage_description || '请等待数据就绪';
+}
+
+function renderV5ReadinessList(suf, total, agg) {
+  var list = document.getElementById('v5ReadinessList');
+  if (!list) return;
+  var items = [];
+  var target = total > 0 ? Math.max(total, 100) : 100;
+  items.push({ label: '有效数据', value: String(total) + ' / ' + target });
+  items.push({ label: '需求簇', value: String(agg.length || 0) + ' 个' });
+  items.push({ label: '高价值机会', value: String(Math.min(3, agg.length)) + ' 个' });
+  if (suf) items.push({ label: '证据链完整度', value: (suf.top3_concentration || 0) + '%' });
+  list.innerHTML = items.map(function(i) {
+    return '<div class="v5-readiness-item"><b>' + escapeHtml(i.label) + '</b><span>' + escapeHtml(i.value) + '</span></div>';
   }).join('');
 }
 
-function renderQuadChart(agg) {
-  var html = '<div class="ar-quad-label">高热度 × 高频次</div>';
-  if (!agg.length) { document.getElementById('arQuad').innerHTML = html; return; }
-  var maxCount = Math.max.apply(null, agg.map(function(a) { return a.count || 0; }));
-  var maxHot = Math.max.apply(null, agg.map(function(a) { return a.hot_score || 0; }));
-  maxHot = maxHot || 1; maxCount = maxCount || 1;
-  agg.slice(0, 12).forEach(function(item) {
-    var left = Math.min(92, ((item.count || 0) / maxCount) * 92);
-    var top = Math.min(92, 92 - ((item.hot_score || 0) / maxHot) * 92);
-    var c = item.hot_score > (maxHot * 0.6) && item.count > (maxCount * 0.5) ? 'rgba(22,160,106,.85)' : 'rgba(59,114,255,.85)';
-    html += '<span class="ar-bubble" style="left:' + left + '%;top:' + top + '%;background:' + c + '" title="' + escapeHtml(item.category) + '"></span>';
-  });
-  document.getElementById('arQuad').innerHTML = html;
+function renderV5Funnel(total, classifiedCount, catCount, solCount) {
+  var steps = [
+    { label: '有效数据', value: String(total), cls: '' },
+    { label: '需求簇', value: String(catCount), cls: 'green' },
+    { label: '高价值机会', value: String(Math.min(3, catCount)), cls: 'orange' },
+    { label: '产品方案', value: String(solCount), cls: 'purple' },
+  ];
+  var html = steps.map(function(s) {
+    return '<div class="v5-f-step ' + s.cls + '"><b>' + s.value + '</b><span>' + s.label + '</span></div>';
+  }).join('');
+  var funnel = document.getElementById('v5Funnel');
+  if (funnel) funnel.innerHTML = html;
 }
 
-function renderReportTable(rows) {
-  var html = '';
-  rows.forEach(function(r, i) {
-    html += '<tr data-cat="' + escapeHtml(r.category) + '" data-priority="' + r.priority + '" data-hot="' + (r.hotScore >= 2 ? 'hot' : '') + '">';
-    html += '<td><span class="ar-prior ar-p0">' + escapeHtml(r.priority) + '</span></td>';
-    html += '<td><b>' + escapeHtml(r.category) + '</b><br><small>' + escapeHtml(r.solutionSummary.substring(0, 30)) + '</small></td>';
-    html += '<td>' + escapeHtml(r.category) + '</td>';
-    html += '<td>' + r.count + '</td>';
-    html += '<td><span class="ar-score">' + r.hotScore + '</span></td>';
-    html += '<td>' + (r.productType ? '<span class="ar-product-pill">' + escapeHtml(r.productType) + '</span>' : '-') + '</td>';
-    html += '<td>' + escapeHtml(r.solutionName) + '</td>';
-    html += '<td><small>' + escapeHtml(r.mvpFeatures || '-') + '</small></td>';
-    html += '<td><span class="ar-action-link ar-detail-link">查看详情</span></td>';
-    html += '</tr>';
-  });
-  document.getElementById('arReportTable').innerHTML = html || '<tr><td colspan="9" class="empty">暂无明细数据</td></tr>';
+function renderV5Bars(agg) {
+  var maxCount = agg.length ? Math.max.apply(null, agg.map(function(a) { return a.count || 0; })) : 1;
+  var colors = ['','green','orange',''];
+  var html = agg.slice(0, 8).map(function(item, i) {
+    var pct = Math.round(((item.count || 0) / maxCount) * 100);
+    var cls = colors[i % colors.length];
+    return '<div class="v5-bar"><span class="v5-bar-name" title="' + escapeHtml(item.category) + '">' + escapeHtml(item.category) + '</span><div class="v5-track"><div class="v5-fill ' + cls + '" style="width:' + pct + '%"></div></div><span class="v5-num">' + (item.count || 0) + '</span></div>';
+  }).join('');
+  if (!html) html = '<p style="color:var(--muted);text-align:center;padding:20px 0">暂无数据</p>';
+  var bars = document.getElementById('v5Bars');
+  if (bars) bars.innerHTML = html;
 }
 
-function bindArTabs() {
-  document.querySelectorAll('#arFilterTabs .ar-tab').forEach(function(tab) {
-    tab.onclick = function() {
-      document.querySelectorAll('#arFilterTabs .ar-tab').forEach(function(t) { t.classList.remove('active'); });
-      tab.classList.add('active');
-      var filter = tab.dataset.filter;
-      document.querySelectorAll('#arReportTable tr').forEach(function(tr) {
-        if (filter === 'all') { tr.style.display = ''; return; }
-        if (filter === 'p0') tr.style.display = tr.dataset.priority === 'P0' ? '' : 'none';
-        if (filter === 'hot') tr.style.display = tr.dataset.hot === 'hot' ? '' : 'none';
-      });
-    };
+function renderV5Matrix(agg) {
+  var el = document.getElementById('v5Matrix');
+  if (!el) return;
+  el.querySelectorAll('.v5-bubble').forEach(function(b) { b.remove(); });
+  if (!agg.length) return;
+
+  var maxCount = Math.max.apply(null, agg.map(function(a) { return a.count || 0; })) || 1;
+  var maxHot = Math.max.apply(null, agg.map(function(a) { return a.hot_score || 0; })) || 1;
+
+  agg.slice(0, 6).forEach(function(item, i) {
+    var cx = 8 + Math.min(78, ((item.count || 0) / maxCount) * 78);
+    var cy = 8 + Math.min(78, (1 - Math.min(1, (item.hot_score || 0) / (maxHot || 1))) * 78);
+    var r = 12 + Math.round(((item.count || 0) / maxCount) * 12);
+    var color = item.hot_score > (maxHot * 0.5) && item.count > (maxCount * 0.3) ? 'rgba(24,167,102,.88)' : 'rgba(56,103,255,.9)';
+    if (i === 3) color = 'rgba(255,173,33,.9)';
+    if (i >= 4) color = 'rgba(154,167,186,.9)';
+    var bubble = document.createElement('span');
+    bubble.className = 'v5-bubble';
+    bubble.style.cssText = 'left:' + cx + '%;top:' + cy + '%;width:' + (r*2) + 'px;height:' + (r*2) + 'px;background:' + color;
+    bubble.title = (item.category || '') + ' (' + item.count + '次, 热度' + (item.hot_score||0) + ')';
+    el.appendChild(bubble);
   });
+
+  var legend = document.getElementById('v5MatrixLegend');
+  if (legend) {
+    var top4 = agg.slice(0, 4);
+    var colors = ['#3867ff','#18a766','#ffad21','#9aa7ba'];
+    var labels = ['P0','P0','P1','观察'];
+    legend.innerHTML = top4.map(function(item, i) {
+      return '<div class="v5-legend-item"><span class="dot" style="background:' + colors[i % colors.length] + '"></span>' + escapeHtml(item.category || '') + '：' + labels[i % labels.length] + '</div>';
+    }).join('');
+  }
 }
 
-function bindArSidebar() {
-  document.querySelectorAll('#productTypeFilter .filter-btn').forEach(function(btn) {
-    btn.onclick = function() {
-      document.querySelectorAll('#productTypeFilter .filter-btn').forEach(function(b) { b.classList.remove('active'); });
-      btn.classList.add('active');
-      var filter = btn.dataset.filter;
-      document.querySelectorAll('#arReportTable tr').forEach(function(tr) {
-        if (filter === 'all') { tr.style.display = ''; return; }
-        var cat = tr.dataset.cat || '';
-        tr.style.display = cat.indexOf(filter) >= 0 ? '' : 'none';
-      });
-    };
-  });
+function renderV5Todo(agg, suf) {
+  var container = document.getElementById('v5Todo');
+  if (!container) return;
+  var todos = [];
+  var topName = agg.length ? (agg[0].category || '') : '';
+
+  if (topName) {
+    todos.push({ b: '先做"' + topName + '"假门页', s: '验证用户是否愿意上传关键词、留资、获取选品报告。' });
+  }
+  if (suf && suf.recommendations && suf.recommendations.length) {
+    suf.recommendations.slice(0, 2).forEach(function(r) {
+      todos.push({ b: r.length > 30 ? r.substring(0, 30) + '…' : r, s: r });
+    });
+  } else {
+    var remaining = Math.max(10, 100 - (suf ? (suf.total_records || 0) : 0));
+    todos.push({ b: '继续采集到100条有效需求', s: '重点补充' + (topName || '相关') + '方向，当前还需' + remaining + '条。' });
+    todos.push({ b: '给Top3痛点补证据链', s: '每个需求簇至少保留5-10条代表性原始评论。' });
+  }
+
+  container.innerHTML = todos.slice(0, 3).map(function(todo, i) {
+    return '<div class="v5-todo-item"><div class="v5-todo-no">' + (i + 1) + '</div><div><b>' + escapeHtml(todo.b) + '</b><span>' + escapeHtml(todo.s) + '</span></div></div>';
+  }).join('');
 }
 
-function bindArDrawer() {
-  document.querySelectorAll('.ar-detail-link').forEach(function(link) {
+function renderV5Competitive(agg) {
+  var dims = agg.slice(0, 5);
+  var maxCount = dims.length ? Math.max.apply(null, dims.map(function(a) { return a.count || 0; })) : 1;
+  var colors = ['gray','','green','orange',''];
+  var barsHtml = dims.map(function(d, i) {
+    var pct = Math.round(((d.count || 0) / maxCount) * 100);
+    var cls = colors[i % colors.length];
+    return '<div class="v5-comp-row"><span class="v5-comp-name">' + escapeHtml(d.category) + '</span><div class="v5-comp-track"><div class="v5-comp-fill ' + cls + '" style="width:' + pct + '%"></div></div><span class="v5-comp-score">' + (d.count || 0) + '</span></div>';
+  }).join('');
+  if (!barsHtml) barsHtml = '<p style="color:var(--muted);font-size:12px">暂无数据</p>';
+  var compBars = document.getElementById('v5CompBars');
+  if (compBars) compBars.innerHTML = barsHtml;
+
+  var items = [];
+  if (agg.length >= 3) {
+    var top = agg[0];
+    items.push({ icon: 'b1', label: '竞品强在数据', text: '但多数停留在看板和关键词展示。' });
+    items.push({ icon: 'b2', label: '机会在决策', text: '把评论转成"做什么产品"和MVP边界。' });
+    items.push({ icon: 'b3', label: '壁垒在证据链', text: '每个结论绑定原始评论，增强可信度。' });
+  } else {
+    items.push({ icon: 'b1', label: '数据积累', text: '需要更多数据来确认方向。' });
+    items.push({ icon: 'b2', label: '聚焦需求', text: '持续关注用户主流讨论集中的方向。' });
+    items.push({ icon: 'b3', label: 'AI 可解决度', text: '多数需求可通过 AI 方案满足。' });
+  }
+  var gapHtml = items.map(function(g) {
+    return '<div class="v5-gap-pill"><div class="v5-gap-icon ' + g.icon + '">' + g.icon.replace('b','') + '</div><div><b>' + escapeHtml(g.label) + '</b><span>' + escapeHtml(g.text) + '</span></div></div>';
+  }).join('');
+  var gapFocus = document.getElementById('v5GapFocus');
+  if (gapFocus) gapFocus.innerHTML = gapHtml;
+
+  var row = document.getElementById('v5InsightRow');
+  if (row) row.style.display = '';
+}
+
+function renderV5Table(rows) {
+  var card = document.getElementById('v5TableCard');
+  var body = document.getElementById('v5TableBody');
+  var count = document.getElementById('v5TableCount');
+  if (!body) return;
+
+  if (!rows.length) {
+    if (card) card.style.display = 'none';
+    return;
+  }
+  if (card) card.style.display = '';
+  if (count) count.textContent = rows.length + ' 条机会';
+
+  var html = rows.map(function(r) {
+    var mvp = r.mvpFeatures || '-';
+    var prodTypes = r.productType ? (r.productType.indexOf('、') >= 0 ? r.productType.split('、').map(function(t) { return '<span class="v5-product">' + escapeHtml(t.trim()) + '</span>'; }).join('') : '<span class="v5-product">' + escapeHtml(r.productType) + '</span>') : '-';
+    return '<tr data-cat="' + escapeHtml(r.category) + '" data-priority="' + r.priority + '">' +
+      '<td><span class="v5-priority v5-' + (r.priority || 'P2').toLowerCase() + '">' + (r.priority || 'P2') + '</span></td>' +
+      '<td><b>' + escapeHtml(r.category) + '</b><small>' + escapeHtml((r.solutionSummary||'').substring(0, 36)) + '</small></td>' +
+      '<td><span class="v5-score">' + r.count + '条</span><br><small>需补到20+</small></td>' +
+      '<td><span class="v5-score">' + Math.min(5, Math.ceil(r.hotScore || 0)) + '/5</span></td>' +
+      '<td><span class="v5-score">' + Math.min(5, Math.ceil(r.hotScore * 1.2 || 0)) + '/5</span></td>' +
+      '<td>' + prodTypes + '</td>' +
+      '<td><small>' + escapeHtml(mvp) + '</small></td>' +
+      '<td><span class="v5-link v5-detail-link">看证据</span></td>' +
+      '</tr>';
+  }).join('');
+  body.innerHTML = html;
+}
+
+function bindV5Drawer() {
+  document.querySelectorAll('.v5-detail-link').forEach(function(link) {
     link.onclick = function() {
       var tr = this.closest('tr');
+      if (!tr) return;
       var cat = tr.dataset.cat || '';
       var report = state.analysisReport || {};
       var solutions = (report.solutions_data || []).filter(function(s) { return s.category === cat; });
@@ -587,7 +647,6 @@ function bindArDrawer() {
 
       document.getElementById('arDrawerTitle').textContent = cat || '需求详情';
 
-      // Quotes
       var quotesHtml = '';
       classified.slice(0, 5).forEach(function(r) {
         var text = r.extracted_text || r.content || r.desc || '';
@@ -598,7 +657,6 @@ function bindArDrawer() {
       if (!quotesHtml) quotesHtml = '<p style="color:var(--muted)">暂无代表内容摘录</p>';
       document.getElementById('arDrawerQuotes').innerHTML = quotesHtml;
 
-      // Keywords
       var kwHtml = '';
       var details = classified.length && classified[0].category_details ? classified[0].category_details : [];
       if (details.length && details[0].matched_keywords) {
@@ -607,7 +665,6 @@ function bindArDrawer() {
       if (!kwHtml) kwHtml = '<span class="ar-tag">暂无关键词信息</span>';
       document.getElementById('arDrawerKeywords').innerHTML = kwHtml;
 
-      // Solutions detail
       var solHtml = '';
       var allSols = [];
       solutions.forEach(function(s) { allSols = allSols.concat(s.solutions || []); });
@@ -626,11 +683,13 @@ function bindArDrawer() {
 
   var closeBtn = document.getElementById('arCloseDrawer');
   var mask = document.getElementById('arMask');
-  if (closeBtn) closeBtn.onclick = hideArDrawer;
-  if (mask) mask.onclick = hideArDrawer;
+  var footBtn = document.getElementById('arCloseDrawerBtn');
+  if (closeBtn) closeBtn.onclick = hideV5Drawer;
+  if (mask) mask.onclick = hideV5Drawer;
+  if (footBtn) footBtn.onclick = hideV5Drawer;
 }
 
-function hideArDrawer() {
+function hideV5Drawer() {
   document.getElementById('arDrawer').classList.remove('open');
   document.getElementById('arMask').classList.remove('open');
 }
@@ -870,6 +929,7 @@ function bindEvents() {
   $("refreshCrawlerBtn").addEventListener("click", loadCrawlerStatus);
   $("crawlerForm").addEventListener("input", updateCrawlerPreview);
   $("crawlerForm").addEventListener("change", updateCrawlerPreview);
+  document.querySelector('[name="industry_type"]')?.addEventListener("change", applyIndustryKeywords);
   $("refreshDataBtn").addEventListener("click", loadDataFiles);
   $("dataFileRows").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-file-action]");
@@ -1351,17 +1411,7 @@ async function fetchLatestReport() {
   try {
     var data = await api("/api/data/analysis-reports/latest");
     if (data && data.total > 0) {
-      state.analysisReport = {
-        total: data.total || 0,
-        categories: data.categories || 0,
-        aggregation: data.aggregation || [],
-        classified_records: data.classified_preview || [],
-        classified_count: data.classified_count || 0,
-        solutions: data.solutions || 0,
-        solutions_data: data.solutions_data || [],
-        webhook_sent: data.webhook_sent || false,
-        generated_at: data.generated_at || "",
-      };
+      state.analysisReport = data;
       renderAnalysisReport();
       appendLocalLog("info", "已加载最近分析报告：" + data.total + " 条数据，" + data.categories + " 个分类");
     }
@@ -1374,7 +1424,7 @@ async function boot() {
   bindEvents();
   updateCrawlerPreview();
   renderAnalysisReport();
-  await Promise.all([loadEnv(), loadConfig(), loadTasks(), loadLogs(), loadCrawlerStatus(), loadDataFiles(), loadWebhookStatus(), loadLlmConfig(), loadPipelineStatus(), fetchLatestReport()]);
+  await Promise.all([loadEnv(), loadConfig(), loadTasks(), loadLogs(), loadCrawlerStatus(), loadDataFiles(), loadWebhookStatus(), loadLlmConfig(), loadPipelineStatus(), fetchLatestReport(), loadIndustryKeywords()]);
   setInterval(loadLogs, 2500);
   setInterval(loadDataFiles, 8000);  // auto-refresh data files
   connectLogSocket();

@@ -242,6 +242,17 @@ async def get_config_options():
         ],
     }
 
+
+@app.get("/api/config/industry-keywords")
+async def get_industry_keywords():
+    """Get industry keyword presets"""
+    import json as _json
+    _path = os.path.join(os.path.dirname(__file__), "data", "industry_keywords.json")
+    if os.path.isfile(_path):
+        with open(_path, "r", encoding="utf-8") as _f:
+            return _json.load(_f)
+    return {}
+
 # Mount static resources - must be placed after all routes
 if os.path.exists(WEBUI_DIR):
     assets_dir = os.path.join(WEBUI_DIR, "assets")
@@ -255,4 +266,5 @@ if os.path.exists(WEBUI_DIR):
     app.mount("/static", StaticFiles(directory=WEBUI_DIR), name="webui-static")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8081)
+    port = int(os.environ.get("PORT", 8081))
+    uvicorn.run(app, host="0.0.0.0", port=port)
