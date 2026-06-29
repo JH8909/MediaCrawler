@@ -321,33 +321,215 @@ _CATEGORY_FALLBACKS = {
     ],
 }
 
+# ── Domain-aware fallback engine ──
+# When LLM is unavailable, this piechart decomposes category names
+# into domain signals and generates relevant, specific solutions
+# rather than generic "one-size-fits-all" templates.
+
+# Domain signals: keyword → (product_type, action_verb, target_audience, tech_hint)
+_DOMAIN_PRODUCT_MAP: Dict[str, Dict[str, Any]] = {
+    "餐饮":   {"type": "小程序", "verb": "发现",      "audience": "吃货、探店爱好者",     "tech": "微信小程序 + Python API + 地图SDK"},
+    "探店":   {"type": "小程序", "verb": "探店攻略",  "audience": "本地生活消费者",       "tech": "微信小程序 + Python爬虫 + AI摘要"},
+    "美食":   {"type": "小程序", "verb": "美食推荐",  "audience": "美食爱好者、游客",     "tech": "微信小程序 + React + 推荐算法"},
+    "旅游":   {"type": "小程序", "verb": "行程规划",  "audience": "自由行游客、家庭出游", "tech": "微信小程序 + 地图API + AI攻略生成"},
+    "出行":   {"type": "小程序", "verb": "出行助手",  "audience": "通勤族、旅客",         "tech": "微信小程序 + 高德API + 实时数据"},
+    "酒店":   {"type": "小程序", "verb": "比价预订",  "audience": "出行旅客",             "tech": "微信小程序 + 爬虫聚合 + 比价引擎"},
+    "休闲娱乐": {"type": "小程序", "verb": "活动推荐","audience": "年轻人、家庭用户",     "tech": "微信小程序 + 推荐算法 + 票务API"},
+    "食品":   {"type": "小程序", "verb": "成分分析",  "audience": "健康饮食者、家长",     "tech": "微信小程序 + OCR识别 + 营养数据库"},
+    "健康":   {"type": "小程序", "verb": "健康管理",  "audience": "注重健康的消费者",     "tech": "微信小程序 + 营养API + AI分析"},
+    "安全":   {"type": "小程序", "verb": "安全查询",  "audience": "消费者、家长",         "tech": "微信小程序 + 数据库查询 + 用户反馈"},
+    "学习":   {"type": "网站",   "verb": "学习路径",  "audience": "职场新人、转行者",     "tech": "React + Python + 课程聚合API"},
+    "技能":   {"type": "网站",   "verb": "技能提升",  "audience": "职场人士、学生",       "tech": "React + Node.js + AI推荐"},
+    "自动化": {"type": "脚本",   "verb": "自动执行",  "audience": "运营人员、开发者",     "tech": "Python + n8n/Node-RED + API集成"},
+    "效率":   {"type": "脚本",   "verb": "效率提升",  "audience": "知识工作者、程序员",   "tech": "Python/Electron + 系统API + AI"},
+    "数据":   {"type": "网站",   "verb": "数据洞察",  "audience": "运营、产品经理",       "tech": "React + ECharts + Python + 爬虫"},
+    "可视化": {"type": "网站",   "verb": "数据看板",  "audience": "数据分析师、管理者",   "tech": "Vue3 + ECharts + Python API"},
+    "电商":   {"type": "网站",   "verb": "选品分析",  "audience": "卖家、选品经理",       "tech": "React + Python + 电商API聚合"},
+    "选品":   {"type": "脚本",   "verb": "智能选品",  "audience": "电商卖家、跨境运营",   "tech": "Python + Pandas + 电商平台API"},
+    "社交":   {"type": "微信机器人","verb":"社群运营","audience": "社群运营、私域操盘手",  "tech": "Python + 微信机器人框架 + SQLite"},
+    "社区":   {"type": "网站",   "verb": "社区管理",  "audience": "社区运营、版主",       "tech": "React + Python + 内容审核AI"},
+    "运营":   {"type": "微信机器人","verb":"运营助手","audience": "新媒体运营、私域运营",  "tech": "Python + 微信API + 自动化脚本"},
+    "内容创作": {"type": "网站", "verb": "内容生成",  "audience": "自媒体创作者、博主",   "tech": "React + Python + LLM API"},
+    "写作":   {"type": "网站",   "verb": "AI写作",    "audience": "作者、内容创作者",     "tech": "React + Python + 大模型API"},
+    "开发者": {"type": "CLI工具", "verb": "开发辅助", "audience": "前后端开发者",         "tech": "Python/Go + CLI + API服务"},
+    "工具":   {"type": "网站",   "verb": "工具集合",  "audience": "各类用户",             "tech": "Vue3 + Python + 插件架构"},
+    "脚本":   {"type": "脚本",   "verb": "脚本工具",  "audience": "开发者、运维",         "tech": "Python + Shell + 自动化"},
+    "生活用品": {"type": "小程序","verb":"好物推荐",  "audience": "租房党、家庭采购",     "tech": "微信小程序 + 爬虫 + 价格对比"},
+    "家居":   {"type": "小程序", "verb": "家居灵感",  "audience": "租房党、新房装修",     "tech": "微信小程序 + 图片识别 + 电商导购"},
+    "购物":   {"type": "小程序", "verb": "购物决策",  "audience": "消费者",               "tech": "微信小程序 + 比价引擎 + 真实评价聚合"},
+    "本地生活": {"type": "小程序","verb":"本地服务",  "audience": "本地居民",             "tech": "微信小程序 + LBS + 服务聚合"},
+    "家政":   {"type": "小程序", "verb": "服务预约",  "audience": "家庭用户",             "tech": "微信小程序 + 预约系统 + 评价体系"},
+    "汽车":   {"type": "小程序", "verb": "选车助手",  "audience": "购车者、车主",         "tech": "微信小程序 + 车型数据库 + 对比工具"},
+    "交通":   {"type": "小程序", "verb": "出行规划",  "audience": "通勤族",               "tech": "微信小程序 + 公交API + 实时路况"},
+    "租房":   {"type": "小程序", "verb": "租房避坑",  "audience": "租房人群",             "tech": "微信小程序 + 房源聚合 + 评价分析"},
+    "买房":   {"type": "小程序", "verb": "购房决策",  "audience": "购房者",               "tech": "微信小程序 + 房价数据 + AI分析"},
+}
+
+# Feature hints per domain — derived from category keywords.
+# Only the *best* (longest) matching domain's features are used, not all.
+_DOMAIN_FEATURE_TEMPLATES: Dict[str, List[str]] = {
+    "餐饮探店": ["周边餐厅地图与评分聚合", "真实探店笔记与评价AI摘要", "排队等位时间预估", "招牌菜推荐与口味标签", "价格/环境/服务三维评分"],
+    "美食体验": ["多平台口碑聚合排行", "AI提取高频好评与差评点", "性价比排名与同类对比", "用户实拍图集与探店Vlog"],
+    "旅游出行": ["目的地攻略自动生成", "真实游记关键信息提取", "预算估算与行程优化", "避坑提示汇总与安全提醒"],
+    "休闲娱乐": ["热门活动与演出推荐", "票务比价与抢票提醒", "场地评价与设施对比", "周末亲子/聚会方案生成"],
+    "食品安全": ["配料表拍照识别与解析", "添加剂风险等级评级", "同类产品成分横向对比", "个性化饮食安全建议"],
+    "成分健康": ["营养成分自动计算", "过敏原检测与预警", "健康食谱推荐与规划", "饮食记录与趋势分析"],
+    "生活用品": ["真实开箱评测聚合", "同款全网比价", "替代品/平替智能推荐", "使用技巧与常见踩坑"],
+    "家居购物": ["空间利用方案推荐", "风格搭配AI建议", "本地门店库存与价格查询", "安装/组装指南"],
+    "本地生活": ["附近服务比价与预约", "真实用户评价聚合", "优惠与团购信息一站聚合", "服务响应时间预估"],
+    "家政服务": ["服务项目与报价透明对比", "阿姨/师傅真实评价与评分", "在线预约与进度追踪", "服务质保与投诉通道"],
+    "汽车交通": ["公交/地铁/驾车方案对比", "实时路况与延误预测", "常坐线路收藏与到站提醒", "出行成本与碳足迹计算"],
+    "学习": ["职业目标→技能树映射", "免费课程资源聚合推荐", "学习进度可视化追踪", "同伴互助学习匹配"],
+    "技能提升": ["技能缺口自动诊断", "项目实战练习生成", "导师/同行作品评价", "证书与面试路径规划"],
+    "自动化": ["拖拽式工作流编辑器", "定时任务调度面板", "执行日志与错误告警", "常用API一键集成（微信/飞书/邮箱）"],
+    "效率工具": ["重复操作一键自动化", "文件批处理（重命名/格式转换）", "智能分类与标签管理", "跨平台搜索聚合"],
+    "数据分析": ["多平台数据聚合看板", "趋势预警与异常检测", "自动生成分析报告", "竞品对比仪表盘"],
+    "可视化": ["拖拽式图表生成器", "实时数据大屏", "自然语言→图表查询", "报告一键导出PPT/PDF"],
+    "电商": ["竞品价格变动监控", "销量趋势预测", "关键词搜索量排行分析", "利润模拟计算器"],
+    "选品工具": ["跨平台选品数据聚合", "蓝海品类自动发现", "供应商匹配与评估", "利润与风险综合评分"],
+    "社交": ["入群欢迎语自动发送", "关键词触发智能自动回复", "群活跃度统计看板", "定时内容推送排期"],
+    "社区运营": ["内容质量自动审核", "水军/广告智能检测", "用户影响力排行", "话题趋势与情感分析"],
+    "内容创作": ["多平台风格适配生成", "标题A/B测试建议", "热点话题实时推荐", "内容原创度检测"],
+    "AI写作": ["大纲/章节自动生成", "违规词/敏感词提前预警", "文风一致性自动检查", "读者反馈情绪分析"],
+    "开发者工具": ["API在线调试与测试", "自动生成接口文档", "代码片段搜索与管理", "依赖安全漏洞扫描"],
+    "脚本": ["常用功能收藏与快捷键", "历史记录与撤销", "批量导入/导出处理", "插件市场与扩展生态"],
+}
+
+# Parse a category name to find the most specific domain match
+def _detect_domain(category: str) -> Optional[Dict[str, Any]]:
+    """Scan category name for known domain keywords, preferring longer matches."""
+    best = None
+    best_len = 0
+    for keyword, info in _DOMAIN_PRODUCT_MAP.items():
+        if keyword in category and len(keyword) > best_len:
+            best = info
+            best_len = len(keyword)
+    return best
+
+def _detect_features(category: str) -> List[str]:
+    """Find feature templates matching this category.
+
+    Tries composite keys first (e.g. "餐饮探店"), then falls back to single-token keys.
+    Only returns features from the best (longest) matching key to avoid cross-domain mixing.
+    """
+    # Try composite keys (split by &) first — prefer longest match
+    parts = [p.strip() for p in category.replace("「", "").replace("」", "").split("&")]
+    best_features: List[str] = []
+    best_len = 0
+
+    for part in parts:
+        for keyword, tmpl in _DOMAIN_FEATURE_TEMPLATES.items():
+            if keyword in part and len(keyword) > best_len:
+                best_features = list(tmpl)
+                best_len = len(keyword)
+
+    if best_features:
+        return best_features[:4]
+
+    # Fallback: single-token match in full category name
+    for keyword, tmpl in _DOMAIN_FEATURE_TEMPLATES.items():
+        if keyword in category:
+            return list(tmpl)[:4]
+
+    return ["核心场景数据采集与结构化", "AI驱动的关键洞察提炼", "用户自助查询与导出"]
+
+def _clean_category_name(category: str) -> str:
+    """Extract a short, display-friendly name from the full category string."""
+    # Remove smart-relabel markers
+    name = category.replace("「", "").replace("」", "").replace("相关需求", "").replace("相关", "").strip()
+    # Take the first part before & as the primary domain
+    if "&" in name:
+        parts = [p.strip() for p in name.split("&")]
+        # Return the shorter, more specific part
+        return min(parts, key=len) if parts else name
+    return name
+
 
 def _fallback_solutions(category: str) -> List[Dict[str, Any]]:
-    """Return template solutions when LLM is unavailable, matched by category name."""
-    # Try exact match
+    """Return template solutions when LLM is unavailable.
+
+    Three-tier lookup:
+    1. Exact match in curated _CATEGORY_FALLBACKS
+    2. Partial keyword match in _CATEGORY_FALLBACKS
+    3. Domain-aware rule-engine synthesis (NEW — replaces generic template)
+    """
+    # Tier 1: exact match
     if category in _CATEGORY_FALLBACKS:
         return _CATEGORY_FALLBACKS[category]
 
-    # Try partial match
+    # Tier 2: partial match in curated fallbacks
     for cat_key, solutions in _CATEGORY_FALLBACKS.items():
         if any(kw in category for kw in cat_key.split(" & ")):
             return solutions
 
-    # Generic fallback
+    # Tier 3: domain-aware rule-engine synthesis
+    domain = _detect_domain(category)
+    features = _detect_features(category)
+    short_name = _clean_category_name(category)
+
+    if domain:
+        action = domain["verb"]
+        ptype = domain["type"]
+        audience = domain["audience"]
+        tech = domain["tech"]
+
+        return [
+            {
+                "name": f"「{short_name}」{action}工具",
+                "product_type": ptype,
+                "summary": f"帮助{audience}快速{action}，用AI从真实评价中提炼关键信息",
+                "target_users": audience,
+                "core_features": features,
+                "tech_stack": tech,
+                "cost": "低",
+                "timeline": "4周",
+                "monetization": "免费+高级功能订阅",
+                "reference": "基于真实用户反馈洞察",
+                "innovation": f"专注「{short_name}」场景，用AI替代人工信息筛选",
+            },
+            {
+                "name": f"「{short_name}」经验社区",
+                "product_type": "小程序" if ptype == "小程序" else "网站",
+                "summary": f"围绕{short_name}的真实用户经验分享与避坑社区",
+                "target_users": f"关注{short_name}的用户与从业者",
+                "core_features": ["真实经验UGC发布与话题标签", "AI自动归类与精华提取", "关注话题与个性化推送", "达人认证与问答互动"],
+                "tech_stack": tech.replace("爬虫", "社区引擎").replace("API", "社区API"),
+                "cost": "低",
+                "timeline": "6周",
+                "monetization": "广告 + 会员增值",
+                "reference": "小红书、什么值得买",
+                "innovation": f"用AI构造{short_name}领域的结构化知识图谱",
+            },
+        ]
+
+    # Last resort: smart generic — still better than old "一站式解决方案"
     return [
         {
-            "name": f"「{category}」痛点解决方案",
+            "name": f"「{short_name}」需求洞察工具",
             "product_type": "网站",
-            "summary": f"针对{category}场景的一站式解决方案",
-            "target_users": f"有{category}需求的用户",
-            "core_features": ["需求收集与分类", "匹配最佳解决方案", "效果追踪与反馈", "持续迭代优化"],
-            "tech_stack": "React + Python + PostgreSQL",
-            "cost": "中",
-            "timeline": "6周",
-            "monetization": "免费+高级订阅",
-            "reference": "待调研",
-            "innovation": "专注细分场景的垂直解决方案",
-        }
+            "summary": f"从社交媒体数据中自动发现与{short_name}相关的高频需求与用户痛点",
+            "target_users": f"关注{short_name}的产品经理、创业者",
+            "core_features": ["社交媒体需求自动采集", "痛点频率与热度排序", "每条结论绑定原文证据", "竞品方案对比与缺口分析"],
+            "tech_stack": "React + Python + 社交媒体API",
+            "cost": "低",
+            "timeline": "3周",
+            "monetization": "免费工具 + 高级报告付费",
+            "reference": "MediaCrawler 同类工具",
+            "innovation": f"用数据驱动{short_name}领域的产品决策，而非直觉",
+        },
+        {
+            "name": f"「{short_name}」评价聚合器",
+            "product_type": "小程序",
+            "summary": f"跨平台聚合{short_name}相关的用户真实评价，AI一键提炼关键结论",
+            "target_users": f"需要{short_name}决策参考的消费者",
+            "core_features": ["多平台评价一站聚合", "AI生成优缺点摘要", "关键词云与情感趋势", "同类对比排行榜"],
+            "tech_stack": "微信小程序 + Python爬虫 + AI摘要",
+            "cost": "低",
+            "timeline": "4周",
+            "monetization": "免费使用 + 去广告订阅",
+            "reference": "大众点评、小红书",
+            "innovation": f"首次为{short_name}场景提供跨平台AI聚合决策参考",
+        },
     ]
 
 

@@ -95,6 +95,235 @@ def segment_text(text: str) -> List[str]:
     return list(jieba.cut(text))
 
 
+# ── Soft token matching (jieba → keyword partial overlap) ──
+
+# High-frequency domain-signal tokens that hint at a category even when
+# no exact keyword match exists. Maps token → category name.
+_DOMAIN_SIGNAL_TOKENS: Dict[str, str] = {}
+_DOMAIN_SIGNALS_BUILT = False
+
+
+def _build_domain_signals(categories: List[dict]) -> None:
+    """One-time build of domain signal token → category mapping from keyword lists."""
+    global _DOMAIN_SIGNAL_TOKENS, _DOMAIN_SIGNALS_BUILT
+    if _DOMAIN_SIGNALS_BUILT:
+        return
+    for cat in categories:
+        name = cat["name"]
+        if name == "其他需求 & 未分类":
+            continue
+        for kw in cat.get("keywords", []):
+            # Split compound keywords into 2-char+ fragments as signals
+            if len(kw) <= 4:
+                _DOMAIN_SIGNAL_TOKENS[kw] = name
+            else:
+                # e.g. "内容创作" → "内容" and "创作" both hint at that category
+                for i in range(0, len(kw) - 1):
+                    frag = kw[i:i+2]
+                    if frag not in _DOMAIN_SIGNAL_TOKENS:
+                        _DOMAIN_SIGNAL_TOKENS[frag] = name
+    _DOMAIN_SIGNALS_BUILT = True
+
+
+def _token_soft_match(
+    text: str,
+    categories: List[dict],
+    settings: dict,
+) -> List[Dict[str, Any]]:
+    """Soft-match text to categories using jieba token → keyword partial overlap.
+
+    This is the bridge between strict exact-match and the "未分类" dump.
+    It handles natural-language expressions that don't contain any pre-defined
+    keyword verbatim but are semantically close (e.g. "团购洗鞋" → 生活用品,
+    "本地AI模型" → 开发者工具).
+    """
+    tokens = segment_text(text)
+    if not tokens:
+        return []
+
+    # Filter: only keep meaningful Chinese tokens (2+ chars, no pure punctuation)
+    meaningful = [t for t in tokens if len(t) >= 2 and re.search(r'[一-鿿]', t)]
+    if not meaningful:
+        return []
+
+    _build_domain_signals(categories)
+    min_match = settings.get("min_match_count", 2)
+    max_cats = settings.get("max_categories_per_item", 3)
+
+    # Pre-compute character bigrams for each meaningful token
+    token_bigrams: Dict[str, set] = {}
+    for token in meaningful:
+        bigrams = set()
+        for i in range(len(token) - 1):
+            bigrams.add(token[i:i+2])
+        token_bigrams[token] = bigrams
+
+    results: List[Dict[str, Any]] = []
+    for cat in categories:
+        name = cat["name"]
+        if name == "其他需求 & 未分类" or not cat.get("keywords"):
+            continue
+
+        keywords = cat["keywords"]
+        matched: List[str] = []
+
+        # Pre-compute keyword bigrams for this category
+        kw_bigrams: Dict[str, set] = {}
+        for kw in keywords:
+            bg = set()
+            for i in range(len(kw) - 1):
+                bg.add(kw[i:i+2])
+            kw_bigrams[kw] = bg
+
+        for token in meaningful:
+            # Direct: token IS a keyword
+            if token in keywords:
+                matched.append(token)
+                continue
+
+            # Domain signal lookup (2-char fragments from keyword list)
+            if token in _DOMAIN_SIGNAL_TOKENS and _DOMAIN_SIGNAL_TOKENS[token] == name:
+                matched.append(token)
+                continue
+
+            # Partial overlap: token is substring of a keyword, or vice versa
+            found_kw = None
+            for kw in keywords:
+                if len(kw) >= 2:
+                    if token in kw or kw in token:
+                        found_kw = kw
+                        break
+            if found_kw:
+                matched.append(found_kw)
+                continue
+
+            # Character bigram overlap (catches near-misses like 服务↔服务态度)
+            if len(token) >= 2:
+                t_bigrams = token_bigrams.get(token, set())
+                if not t_bigrams:
+                    continue
+                best_kw = None
+                best_overlap = 0
+                for kw in keywords:
+                    if len(kw) < 2:
+                        continue
+                    k_bigrams = kw_bigrams.get(kw, set())
+                    if not k_bigrams:
+                        continue
+                    overlap = len(t_bigrams & k_bigrams)
+                    if overlap >= 1 and overlap > best_overlap:
+                        best_overlap = overlap
+                        best_kw = kw
+                if best_kw:
+                    matched.append(best_kw)
+
+        if matched and len(matched) >= min_match:
+            unique = list(dict.fromkeys(matched))  # dedup preserving order
+            results.append({
+                "category": name,
+                "matched_keywords": unique[:5],
+                "confidence": round(min(0.65, 0.25 + len(unique) * 0.08), 2),
+            })
+
+    results.sort(key=lambda x: x["confidence"], reverse=True)
+    return results[:max_cats]
+
+
+# ── Smart unclassified labeling ──
+
+# Stop words that don't carry domain signal by themselves
+_UNCLASSIFIED_STOP = {
+    "可以", "一个", "这个", "那个", "什么", "怎么", "没有", "还是",
+    "已经", "不是", "因为", "所以", "如果", "而且", "但是", "不过",
+    "一下", "一点", "比较", "非常", "特别", "真的", "还是", "觉得",
+    "现在", "今天", "昨天", "明天", "最近", "一直", "已经", "还有",
+    "就是", "可能", "应该", "需要", "知道", "看到", "听到", "想到",
+}
+
+
+def _extract_meaningful_tokens(text: str, top_n: int = 5) -> List[str]:
+    """Extract the most domain-meaningful tokens (including bigrams) from a short text.
+
+    Returns a mix of single tokens and consecutive-token bigrams.
+    Bigrams (e.g. "本地生活", "团购服务") are more distinctive for clustering
+    than individual tokens alone.
+    """
+    tokens = segment_text(text)
+    if not tokens:
+        return []
+
+    # Filter to meaningful single tokens
+    scored: Dict[str, float] = {}
+    meaningful_singles: List[str] = []
+    for t in tokens:
+        t = t.strip()
+        if len(t) < 2:
+            continue
+        if not re.search(r'[一-鿿]', t):
+            continue
+        if t in _UNCLASSIFIED_STOP:
+            continue
+        meaningful_singles.append(t)
+        score = len(t) * 0.3
+        if len(t) >= 3:
+            score += 0.5
+        if re.search(r'(工具|平台|服务|产品|方案|推荐|测评|攻略|教程|方法|技巧|经验)', t):
+            score += 1.0
+        scored[t] = scored.get(t, 0) + score
+
+    # Generate consecutive bigrams from meaningful singles (order-preserving)
+    for i in range(len(meaningful_singles) - 1):
+        bigram = meaningful_singles[i] + meaningful_singles[i + 1]
+        # Cap at 4 chars: longer compounds are too specific for clustering
+        if 4 <= len(bigram) <= 5:
+            scored[bigram] = scored.get(meaningful_singles[i], 0) + scored.get(meaningful_singles[i + 1], 0) + 1.5
+
+    ranked = sorted(scored.items(), key=lambda x: -x[1])
+    return [t for t, _ in ranked[:top_n]]
+
+
+def _smart_unclassified_label(texts: List[str]) -> str:
+    """Given a batch of unclassified texts, suggest a descriptive label.
+
+    Used as a last resort to avoid a single giant "未分类" bucket.
+    Falls back to the generic label when texts are too diverse.
+    """
+    if not texts:
+        return "其他需求 & 未分类"
+
+    if len(texts) <= 3:
+        # Too few to cluster meaningfully — pick top tokens
+        all_tokens: List[str] = []
+        for t in texts:
+            all_tokens.extend(_extract_meaningful_tokens(t, top_n=2))
+        if not all_tokens:
+            return "其他需求 & 未分类"
+        # Count and pick top 2
+        from collections import Counter
+        top = Counter(all_tokens).most_common(2)
+        label = " & ".join(t for t, _ in top)
+        return f"「{label}」相关" if label else "其他需求 & 未分类"
+
+    # Collect top tokens across all texts
+    token_counter: Dict[str, int] = {}
+    for text in texts:
+        for token in _extract_meaningful_tokens(text, top_n=3):
+            token_counter[token] = token_counter.get(token, 0) + 1
+
+    if not token_counter:
+        return "其他需求 & 未分类"
+
+    # Only keep tokens that appear in >= 2 texts (signal, not noise)
+    from collections import Counter as _Counter
+    repeated = {t: c for t, c in token_counter.items() if c >= 2}
+    if not repeated:
+        return "其他需求 & 未分类"
+
+    top_tokens = _Counter(repeated).most_common(3)
+    label = " & ".join(t for t, _ in top_tokens[:3])
+    return f"「{label}」相关需求" if label else "其他需求 & 未分类"
+
+
 # ── LLM-based semantic classification ──
 
 _LLM_CLASSIFY_PROMPT = """你是一个用户需求分类专家。给定一段用户内容，判断它属于以下哪个（些）类别。
@@ -281,36 +510,55 @@ def llm_batch_classify(
 
 
 def classify_single(text: str, categories: List[dict], settings: dict) -> List[Dict[str, Any]]:
-    """Keyword-based classification using token (jieba) matching primarily.
+    """Three-tier classification pipeline:
 
-    Substring matching (`kw in text`) is ONLY used as a fallback when jieba is unavailable.
-    This prevents single-character keywords like '找' from matching everywhere.
+    Tier 1 — Exact token match: jieba tokens ∩ category keywords (strictest).
+    Tier 2 — Soft token match: jieba tokens ↔ keyword partial overlap.
+    Tier 3 — Unguarded substring match (fallback when jieba unavailable).
+
+    Records that pass all three tiers are assigned to "其他需求 & 未分类".
     """
     if not text or len(text) < settings.get("min_chinese_chars", 10):
         return []
+
     tokens = segment_text(text)
     token_set = set(tokens) if tokens else set()
     min_match = settings.get("min_match_count", 2)
     max_cats = settings.get("max_categories_per_item", 3)
-    orig_text = text  # keep original for substring fallback
-    results = []
+    orig_text = text
+
+    results: List[Dict[str, Any]] = []
+
     for cat in categories:
         name = cat["name"]
         keywords = cat.get("keywords", [])
-        # Skip "其他需求" fallback category during matching
         if not keywords or name == "其他需求 & 未分类":
             continue
-        # Primary: token-set matching (jieba tokens ∩ keywords)
-        # This ensures word boundary accuracy — "找" won't match "找到" unless it's a separate token
-        matched = []
+
+        # ── Tier 1: Exact token-set intersection ──
+        matched: List[str] = []
         if token_set:
             matched = [kw for kw in keywords if kw in token_set]
-        # Fallback: substring matching only when jieba is unavailable
+
+        # ── Tier 2: Soft token overlap (NEW) ──
+        if not matched and token_set:
+            soft = _token_soft_match(text, [cat], settings)
+            if soft:
+                results.extend(soft)
+                continue
+
+        # ── Tier 3: Raw substring (jieba unavailable) ──
         if not matched and not token_set:
             matched = [kw for kw in keywords if kw in orig_text]
+
         if matched and len(matched) >= min_match:
             confidence = min(1.0, len(matched) / max(len(keywords), 1) * 2)
-            results.append({"category": name, "matched_keywords": matched[:5], "confidence": round(confidence, 2)})
+            results.append({
+                "category": name,
+                "matched_keywords": matched[:5],
+                "confidence": round(confidence, 2),
+            })
+
     results.sort(key=lambda x: x["confidence"], reverse=True)
     return results[:max_cats]
 
@@ -393,6 +641,9 @@ def analyze_records(
             logger.warning(f"[LLMClassifier] Batch classification failed: {llm_exc}")
 
     # Classify each record (LLM primary, keyword fallback)
+    unclassified_texts: List[str] = []
+    unclassified_indices: List[int] = []
+
     for orig_idx, full_text, record in texts_with_records:
         cats = llm_results.get(orig_idx, [])
 
@@ -400,8 +651,11 @@ def analyze_records(
         if not cats:
             cats = classify_single(full_text, categories, settings)
 
-        # If still unmatched, assign to "其他需求 & 未分类"
+        # If still unmatched, collect for smart labeling
         if not cats:
+            unclassified_texts.append(full_text)
+            unclassified_indices.append(orig_idx)
+            # Temporary placeholder — will be replaced below
             cats = [{"category": "其他需求 & 未分类", "matched_keywords": [], "confidence": 0.0}]
 
         hot_score = _calculate_hot_score(record, hot_weights)
@@ -417,6 +671,32 @@ def analyze_records(
             freq[name] = freq.get(name, 0) + 1
             hot_scores[name] = hot_scores.get(name, 0) + hot_score
             hit_counts[name] = hit_counts.get(name, 0) + 1
+
+    # ── Smart unclassified relabeling ──
+    # When > 25% of records land in "其他需求 & 未分类", the category
+    # system is missing important domains.  Try to auto-discover sub-clusters
+    # from the unclassified texts and split the monolith.
+    total_classified = len(texts_with_records)
+    unclassified_count = freq.get("其他需求 & 未分类", 0)
+    unclassified_ratio = unclassified_count / max(total_classified, 1)
+
+    if unclassified_count >= 5 and unclassified_ratio >= 0.15:
+        logger.info(
+            f"[NeedsAnalyzer] {unclassified_count}/{total_classified} records "
+            f"({unclassified_ratio:.0%}) unclassified — running smart relabeling"
+        )
+        _relabel_unclassified(
+            classified_records=classified_records,
+            freq=freq,
+            hot_scores=hot_scores,
+            hit_counts=hit_counts,
+            min_cluster_size=max(2, round(unclassified_count * 0.04)),
+        )
+    elif unclassified_count > 0:
+        logger.info(
+            f"[NeedsAnalyzer] {unclassified_count}/{total_classified} records "
+            f"({unclassified_ratio:.0%}) unclassified — ratio below threshold, keeping generic label"
+        )
 
     # Build aggregation with hot score
     aggregation = []
@@ -434,6 +714,121 @@ def analyze_records(
         "total": len(records),
         "classified_count": len(classified_records),
     }
+
+
+def _relabel_unclassified(
+    classified_records: List[Dict[str, Any]],
+    freq: Dict[str, int],
+    hot_scores: Dict[str, float],
+    hit_counts: Dict[str, int],
+    min_cluster_size: int = 3,
+) -> None:
+    """Split the monolithic "其他需求 & 未分类" bucket into auto-discovered sub-clusters.
+
+    Mutates classified_records, freq, hot_scores, hit_counts in place.
+    """
+    # Collect unclassified record indices and their texts
+    unclassified_entries: List[Tuple[int, str]] = []
+    for idx, rec in enumerate(classified_records):
+        cats = rec.get("categories") or []
+        if "其他需求 & 未分类" in cats:
+            text = rec.get("extracted_text", "") or ""
+            unclassified_entries.append((idx, text))
+
+    if len(unclassified_entries) < min_cluster_size:
+        return
+
+    # Extract signature tokens per entry
+    entry_signatures: List[Tuple[int, List[str]]] = []
+    for idx, text in unclassified_entries:
+        tokens = _extract_meaningful_tokens(text, top_n=4)
+        if tokens:
+            entry_signatures.append((idx, tokens))
+
+    if not entry_signatures:
+        return
+
+    # Greedy clustering: group entries that share ≥ 1 top token
+    clusters: List[Dict[str, Any]] = []  # [{token: str, indices: [idx, ...]}]
+    assigned = set()
+
+    # Sort tokens by frequency across entries to find strongest signals first
+    from collections import Counter as _C
+    global_token_freq = _C()
+    for _, tokens in entry_signatures:
+        global_token_freq.update(tokens)
+
+    # Build lookup: idx → token list
+    entry_signatures_dict: Dict[int, List[str]] = {idx: tokens for idx, tokens in entry_signatures}
+
+    # Try each frequent token as a cluster seed (prefer short tokens first)
+    # Short tokens (2-4 chars) make better cluster labels than long bigrams
+    sorted_seeds = sorted(global_token_freq.most_common(20), key=lambda x: (-x[1], len(x[0])))
+    for seed_token, _ in sorted_seeds:
+        cluster_indices: List[int] = []
+        for idx, tokens in entry_signatures:
+            if idx in assigned:
+                continue
+            if seed_token in tokens:
+                cluster_indices.append(idx)
+        if len(cluster_indices) >= min_cluster_size:
+            for i in cluster_indices:
+                assigned.add(i)
+            # Pick the best label: shortest token that appears in most cluster members
+            cluster_token_freq = _C()
+            for idx in cluster_indices:
+                for t in entry_signatures_dict.get(idx, []):
+                    cluster_token_freq[t] += 1
+            # Choose shortest token among the most frequent
+            best_label = seed_token
+            if cluster_token_freq:
+                top_tokens = sorted(cluster_token_freq.items(), key=lambda x: (-x[1], len(x[0])))
+                for t, _ in top_tokens[:5]:
+                    if 2 <= len(t) <= 4:
+                        best_label = t
+                        break
+            clusters.append({"token": best_label, "indices": cluster_indices})
+
+    if not clusters:
+        # No meaningful sub-clusters found — keep the generic label
+        return
+
+    # Rename the generic bucket and create sub-categories
+    old_label = "其他需求 & 未分类"
+    old_count = freq.pop(old_label, 0)
+    old_hot = hot_scores.pop(old_label, 0.0)
+    old_hits = hit_counts.pop(old_label, 0)
+
+    for cluster in clusters:
+        label = f"「{cluster['token']}」相关需求"
+        freq[label] = len(cluster["indices"])
+        # Distribute hot scores proportionally
+        share = len(cluster["indices"]) / max(old_count, 1)
+        hot_scores[label] = round(old_hot * share, 2)
+        hit_counts[label] = len(cluster["indices"])
+
+        for idx in cluster["indices"]:
+            rec = classified_records[idx]
+            rec["categories"] = [label]
+            rec["category_details"] = [{
+                "category": label,
+                "matched_keywords": [cluster["token"]],
+                "confidence": 0.25,
+            }]
+
+    # Remaining unclassified (not in any cluster): keep generic label
+    leftover = old_count - len(assigned)
+    if leftover > 0:
+        freq[old_label] = leftover
+        hot_scores[old_label] = round(old_hot * (leftover / max(old_count, 1)), 2)
+        hit_counts[old_label] = leftover
+        # These records keep their original "其他需求 & 未分类" label
+
+    logger.info(
+        f"[NeedsAnalyzer] Smart relabeling: split {old_count} unclassified → "
+        f"{len(clusters)} sub-clusters ({sum(len(c['indices']) for c in clusters)} records), "
+        f"{leftover} remain generic"
+    )
 
 
 def load_jsonl(filepath: str) -> List[Dict[str, Any]]:

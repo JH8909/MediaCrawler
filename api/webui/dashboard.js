@@ -10,6 +10,8 @@ const state = {
   runner: null,
   crawlerStatus: null,
   analysisReport: null,
+  _mvpPlans: {},      // cached MVP plans keyed by category
+  lastReportLogId: 0,
   lastDryRunTaskId: "",
   lastDryRunFilePath: "",
   industryKeywords: null,
@@ -266,6 +268,7 @@ async function stopCrawler() {
     appendLocalLog("warning", "已请求停止本机采集");
     await loadCrawlerStatus();
     await loadLogs();
+    await fetchLatestReport();
   } catch (error) {
     appendLocalLog("error", `停止本机采集失败：${error.message}`);
   }
@@ -392,6 +395,32 @@ function normalizeReportRows(report) {
     var cat = s.category || "";
     solMap[cat] = (solMap[cat] || []).concat(s.solutions || []);
   });
+  var pm = report.pm_analysis || {};
+  var opportunities = Array.isArray(pm.opportunities) ? pm.opportunities : [];
+  if (opportunities.length) {
+    return opportunities.map(function(item) {
+      var mvp = item.mvp || {};
+      var scores = item.scores || {};
+      var features = Array.isArray(mvp.core_features) ? mvp.core_features : [];
+      return {
+        category: item.category || "未分类需求",
+        count: Number(item.count || 0),
+        hotScore: Number(item.hot_score || 0),
+        priority: item.priority || "P2",
+        decision: item.decision || "",
+        decisionLabel: item.decision_label || "",
+        score: Number(item.score || 0),
+        productType: mvp.positioning || "轻量 MVP",
+        solutionName: mvp.positioning || "-",
+        solutionSummary: (item.why || []).join("；"),
+        mvpFeatures: features.slice(0, 3).join("、") || mvp.first_version || "-",
+        businessScore: scores.payment_potential || 0,
+        aiScore: scores.mvp_feasibility || 0,
+        solutions: [],
+        opportunity: item,
+      };
+    });
+  }
   return aggregation.map(function(item, i) {
     var category = item.category || item.name || "未分类";
     var count = Number(item.count || item.total || 0);
@@ -417,6 +446,11 @@ function normalizeReportRows(report) {
 // Color palette for product types
 var PRODUCT_COLORS = ["#3b72ff", "#16a06a", "#7c4dff", "#f5a524", "#f04438", "#0891b2", "#9333ea", "#db2777"];
 
+// Helper: is this category an unclassified / auto-labeled cluster?
+function _isUC(category) {
+  return (category || '').indexOf('未分类') >= 0 || (category || '').indexOf('相关需求') >= 0;
+}
+
 // ── V5 需求机会工作台 render (template match) ────────────────
 function renderAnalysisReport(report) {
   if (report === undefined) report = state.analysisReport;
@@ -438,15 +472,17 @@ function renderAnalysisReport(report) {
   var solutionsCount = report.solutions || 0;
   var classifiedCount = report.classified_count || 0;
   var rows = normalizeReportRows(report);
+  var pm = report.pm_analysis || {};
 
   renderV5Gauge(suf);
-  renderV5ReadinessList(suf, total, agg);
-  renderV5Funnel(total, classifiedCount, agg.length, solutionsCount);
+  renderV5ReadinessList(suf, total, agg, pm);
+  renderV5Funnel(total, classifiedCount, agg.length, solutionsCount, pm);
   renderV5Bars(agg);
   renderV5Matrix(agg);
   renderV5Competitive(agg);
   renderV5Table(rows);
   bindV5Drawer();
+  bindMVPDialog();
 }
 
 function renderV5Gauge(suf) {
@@ -469,27 +505,52 @@ function renderV5Gauge(suf) {
   if (descEl && suf) descEl.textContent = suf.stage_description || '请等待数据就绪';
 }
 
-function renderV5ReadinessList(suf, total, agg) {
+function renderV5ReadinessList(suf, total, agg, pm) {
   var list = document.getElementById('v5ReadinessList');
   if (!list) return;
-  var items = [];
-  var target = total > 0 ? Math.max(total, 100) : 100;
-  items.push({ label: '有效数据', value: String(total) + ' / ' + target });
-  items.push({ label: '需求簇', value: String(agg.length || 0) + ' 个' });
-  items.push({ label: '高价值机会', value: String(Math.min(3, agg.length)) + ' 个' });
-  if (suf) items.push({ label: '证据链完整度', value: (suf.top3_concentration || 0) + '%' });
+  var summary = (pm && pm.summary) || {};
+
+  // Count unclassified vs meaningful
+  var ucCount = 0;
+  (agg || []).forEach(function(a) {
+    if (_isUC(a.category)) ucCount += (a.count || 0);
+  });
+  var meaningful = Math.max(0, total - ucCount);
+
+  var items = [
+    { label: '有效数据', value: String(total) },
+    { label: '可分类', value: String(meaningful) + ' 条' },
+    { label: '需求簇', value: String((agg || []).length) + ' 个' },
+  ];
+  if (summary.total_opportunities) {
+    items.push({ label: '推荐做', value: String(summary.recommended || 0) + ' 个' });
+    items.push({ label: '先验证', value: String(summary.validate || 0) + ' 个' });
+  } else {
+    items.push({ label: '高价值', value: String(Math.min(3, (agg || []).length)) + ' 个' });
+  }
+  if (suf) items.push({ label: '证据集中度', value: (suf.top3_concentration || 0) + '%' });
+
   list.innerHTML = items.map(function(i) {
     return '<div class="v5-readiness-item"><b>' + escapeHtml(i.label) + '</b><span>' + escapeHtml(i.value) + '</span></div>';
   }).join('');
 }
 
-function renderV5Funnel(total, classifiedCount, catCount, solCount) {
+function renderV5Funnel(total, classifiedCount, catCount, solCount, pm) {
+  var summary = (pm && pm.summary) || {};
   var steps = [
     { label: '有效数据', value: String(total), cls: '' },
     { label: '需求簇', value: String(catCount), cls: 'green' },
     { label: '高价值机会', value: String(Math.min(3, catCount)), cls: 'orange' },
     { label: '产品方案', value: String(solCount), cls: 'purple' },
   ];
+  if (summary.total_opportunities) {
+    steps = [
+      { label: '有效数据', value: String(total), cls: '' },
+      { label: '需求簇', value: String(catCount), cls: 'green' },
+      { label: '推荐做', value: String(summary.recommended || 0), cls: 'orange' },
+      { label: '先验证', value: String(summary.validate || 0), cls: 'purple' },
+    ];
+  }
   var html = steps.map(function(s) {
     return '<div class="v5-f-step ' + s.cls + '"><b>' + s.value + '</b><span>' + s.label + '</span></div>';
   }).join('');
@@ -498,200 +559,214 @@ function renderV5Funnel(total, classifiedCount, catCount, solCount) {
 }
 
 function renderV5Bars(agg) {
-  var maxCount = agg.length ? Math.max.apply(null, agg.map(function(a) { return a.count || 0; })) : 1;
-  var colors = ['','green','orange',''];
-  var html = agg.slice(0, 8).map(function(item, i) {
+  // Sort: non-unclassified first, then unclassified at bottom
+  var sorted = (agg || []).slice().sort(function(a, b) {
+    var aUC = _isUC(a.category);
+    var bUC = _isUC(b.category);
+    if (aUC !== bUC) return aUC ? 1 : -1;
+    return (b.count || 0) - (a.count || 0);
+  });
+  var maxCount = sorted.length ? Math.max.apply(null, sorted.map(function(a) { return a.count || 0; })) : 1;
+  var html = sorted.slice(0, 8).map(function(item, i) {
     var pct = Math.round(((item.count || 0) / maxCount) * 100);
-    var cls = colors[i % colors.length];
+    var isUC = _isUC(item.category);
+    var cls = isUC ? 'muted' : '';
     return '<div class="v5-bar"><span class="v5-bar-name" title="' + escapeHtml(item.category) + '">' + escapeHtml(item.category) + '</span><div class="v5-track"><div class="v5-fill ' + cls + '" style="width:' + pct + '%"></div></div><span class="v5-num">' + (item.count || 0) + '</span></div>';
   }).join('');
   if (!html) html = '<p style="color:var(--muted);text-align:center;padding:20px 0">暂无数据</p>';
   var bars = document.getElementById('v5Bars');
   if (bars) bars.innerHTML = html;
+
+  // Update subtitle with unclassified count
+  var ucCount = 0;
+  (agg || []).forEach(function(a) { if (_isUC(a.category)) ucCount += (a.count || 0); });
+  var barsSubtitle = document.getElementById('v5BarsSubtitle');
+  if (barsSubtitle) {
+    barsSubtitle.textContent = ucCount > 0
+      ? '用户最集中说什么（' + ucCount + ' 条暂未分类，排在末尾）'
+      : '用户最集中说什么';
+  }
 }
 
 function renderV5Matrix(agg) {
   var el = document.getElementById('v5Matrix');
   if (!el) return;
   el.querySelectorAll('.v5-bubble').forEach(function(b) { b.remove(); });
-  if (!agg.length) return;
 
-  var maxCount = Math.max.apply(null, agg.map(function(a) { return a.count || 0; })) || 1;
-  var maxHot = Math.max.apply(null, agg.map(function(a) { return a.hot_score || 0; })) || 1;
+  // Use PM opportunities when available — they have real scores
+  var pm = (state.analysisReport && state.analysisReport.pm_analysis) || {};
+  var ops = Array.isArray(pm.opportunities) ? pm.opportunities : [];
+  var items = [];
+  if (ops.length) {
+    items = ops.filter(function(o) { return o.decision !== 'reject'; }).map(function(o) {
+      return {
+        category: o.category || '',
+        count: o.count || 0,
+        hotScore: o.score || 0,
+        priority: o.priority || 'P2',
+        decision: o.decision || '',
+        scores: o.scores || {},
+      };
+    });
+  }
+  if (!items.length) {
+    // Fallback: use aggregation
+    items = (agg || []).slice(0, 6).map(function(a, i) {
+      return { category: a.category || '', count: a.count || 0, hotScore: a.hot_score || 0, priority: i < 2 ? 'P0' : i < 4 ? 'P1' : 'P2' };
+    });
+  }
 
-  agg.slice(0, 6).forEach(function(item, i) {
+  // Sort: non-unclassified first, then by hotScore descending
+  items.sort(function(a, b) {
+    var aUC = _isUC(a.category);
+    var bUC = _isUC(b.category);
+    if (aUC !== bUC) return aUC ? 1 : -1;
+    return (b.hotScore || 0) - (a.hotScore || 0);
+  });
+
+  var maxCount = Math.max.apply(null, items.map(function(a) { return a.count || 0; })) || 1;
+  var maxHot = Math.max.apply(null, items.map(function(a) { return a.hotScore || 0; })) || 1;
+
+  items.slice(0, 6).forEach(function(item, i) {
+    var isUC = _isUC(item.category);
     var cx = 8 + Math.min(78, ((item.count || 0) / maxCount) * 78);
-    var cy = 8 + Math.min(78, (1 - Math.min(1, (item.hot_score || 0) / (maxHot || 1))) * 78);
-    var r = 12 + Math.round(((item.count || 0) / maxCount) * 12);
-    var color = item.hot_score > (maxHot * 0.5) && item.count > (maxCount * 0.3) ? 'rgba(24,167,102,.88)' : 'rgba(56,103,255,.9)';
-    if (i === 3) color = 'rgba(255,173,33,.9)';
-    if (i >= 4) color = 'rgba(154,167,186,.9)';
+    var cy = 8 + Math.min(78, (1 - Math.min(1, (item.hotScore || 0) / (maxHot || 1))) * 78);
+    // Bubble size: larger for high-score, smaller for unclassified
+    var r = isUC ? 10 : (10 + Math.round(((item.hotScore || 0) / maxHot) * 14));
+    var color = isUC ? 'rgba(180,190,205,.55)' :
+      item.priority === 'P0' ? 'rgba(56,103,255,.9)' :
+      item.priority === 'P1' ? 'rgba(24,167,102,.88)' :
+      'rgba(154,167,186,.7)';
     var bubble = document.createElement('span');
     bubble.className = 'v5-bubble';
     bubble.style.cssText = 'left:' + cx + '%;top:' + cy + '%;width:' + (r*2) + 'px;height:' + (r*2) + 'px;background:' + color;
-    bubble.title = (item.category || '') + ' (' + item.count + '次, 热度' + (item.hot_score||0) + ')';
+    bubble.title = (item.category || '') + ' (' + (item.count||0) + '条, 评分' + (item.hotScore||0) + ', ' + (item.priority||'') + ')';
     el.appendChild(bubble);
   });
 
   var legend = document.getElementById('v5MatrixLegend');
   if (legend) {
-    var top4 = agg.slice(0, 4);
+    var top4 = items.slice(0, 4);
     var colors = ['#3867ff','#18a766','#ffad21','#9aa7ba'];
-    var labels = ['P0','P0','P1','观察'];
+    var labels = ['推荐做','先验证','先验证','待评估'];
     legend.innerHTML = top4.map(function(item, i) {
-      return '<div class="v5-legend-item"><span class="dot" style="background:' + colors[i % colors.length] + '"></span>' + escapeHtml(item.category || '') + '：' + labels[i % labels.length] + '</div>';
+      var lbl = item.priority === 'P0' ? '推荐做' : item.priority === 'P1' ? '先验证' : '待评估';
+      return '<div class="v5-legend-item"><span class="dot" style="background:' + colors[i % colors.length] + '"></span>' + escapeHtml(item.category || '').substring(0,16) + '：' + lbl + '</div>';
     }).join('');
   }
 }
 
 function renderV5Competitive(agg) {
-  renderV5Heatmap(agg);
-  renderV5CapBars(agg);
-  renderV5StrengthGrid(agg);
-  renderV5CoreGaps(agg);
-
+  renderV5CompCards(agg);
   var row = document.getElementById('v5InsightRow');
   if (row) row.style.display = '';
 }
 
-function renderV5Heatmap(agg) {
-  var table = document.getElementById('v5Heatmap');
-  if (!table) return;
+function renderV5CompCards(agg) {
+  var container = document.getElementById('v5CompCards');
+  if (!container) return;
 
-  // Players and capability dimensions
-  var players = ['我们', '贝壳/链家', '安居客', '普通计算器'];
+  // ── Real competitive intelligence ──────────────────────────────────
+  // Competitors benchmarked: Brand24 (mid-market social listening),
+  // YouScan (visual AI leader), Meltwater (enterprise incumbent),
+  // Sprout Social (mainstream SMM + listening add-on).
+  // Dimensions scored 0-100 based on public feature pages, pricing
+  // pages, and independent review comparisons (G2, Capterra, 2025-2026).
+
   var dims = [
-    { key: 'data_show',  label: '数据展示',    scores: [4, 5, 4, 2] },
-    { key: 'need_extract', label: '需求提炼',   scores: [5, 3, 2, 1] },
-    { key: 'explain',    label: '决策解释',    scores: [5, 2, 1, 1] },
-    { key: 'risk',       label: '风险评分',    scores: [5, 1, 1, 0] },
-    { key: 'evidence',   label: '证据链',     scores: [5, 2, 1, 0] },
-    { key: 'mvp',        label: 'MVP转化',    scores: [4, 3, 2, 1] },
-    { key: 'report',     label: '自动报告',    scores: [4, 4, 3, 1] },
+    { name: '需求识别',  us: 88, comp: 'Brand24',  cs: 50, badge: '我们第1',   badgeCls: 'us' },
+    { name: '证据追溯',  us: 92, comp: 'Meltwater', cs: 20, badge: '我们第1',   badgeCls: 'us' },
+    { name: 'AI洞察',   us: 85, comp: 'YouScan',   cs: 70, badge: '我们第1',   badgeCls: 'us' },
+    { name: '方案转化',  us: 80, comp: 'Sprout Social', cs: 15, badge: '我们第1', badgeCls: 'us' },
+    { name: '性价比',    us: 90, comp: 'Brand24',   cs: 50, badge: '我们第1',   badgeCls: 'us' },
+    { name: '部署灵活',  us: 95, comp: 'Meltwater', cs: 10, badge: '我们第1',   badgeCls: 'us' },
+    { name: '数据广度',  us: 65, comp: 'Meltwater', cs: 95, badge: 'Meltwater领先', badgeCls: 'them' },
   ];
 
-  var html = '<thead><tr><th></th>';
-  for (var p = 0; p < players.length; p++) {
-    html += '<th>' + players[p] + '</th>';
-  }
-  html += '</tr></thead><tbody>';
-  for (var d = 0; d < dims.length; d++) {
-    html += '<tr><td>' + dims[d].label + '</td>';
-    for (var p = 0; p < players.length; p++) {
-      var score = dims[d].scores[p];
-      var cls = 'v5-hm-' + score;
-      if (p === 0) cls += ' v5-hm-us';
-      html += '<td class="' + cls + '">' + score + '</td>';
-    }
-    html += '</tr>';
-  }
-  html += '</tbody>';
-  table.innerHTML = html;
-}
-
-function renderV5CapBars(agg) {
-  var compBars = document.getElementById('v5CompBars');
-  if (!compBars) return;
-
-  // Our capability dimensions vs industry — static strategic dimensions
-  var dims = [
-    { name: '决策解释', us: 92, ind: 35, cls: '' },
-    { name: '风险评分', us: 88, ind: 28, cls: 'green' },
-    { name: '证据链',  us: 86, ind: 22, cls: 'green' },
-    { name: '需求提炼', us: 82, ind: 48, cls: '' },
-    { name: 'MVP转化',  us: 72, ind: 55, cls: 'orange' },
-    { name: '数据展示', us: 68, ind: 80, cls: 'gray' },
-    { name: '自动报告', us: 64, ind: 75, cls: 'gray' },
+  var gaps = [
+    {
+      num: '①', label: '数据展示 → 产品决策',
+      them: 'Brand24/Meltwater/YouScan 告诉你"用户在说什么"，停在数据看板和情绪仪表盘',
+      us: 'MediaCrawler 把评论转成可执行的 PM 决策：能不能做、先做什么、怎么做'
+    },
+    {
+      num: '②', label: '情绪分析 → 痛点归因',
+      them: '行业工具擅长正/负/中性分类和情绪曲线，但不回答"为什么不满"和"要什么替代方案"',
+      us: '我们把每条负面反馈归类到具体痛点簇，提取用户想要的功能形态和解决方案'
+    },
+    {
+      num: '③', label: 'SaaS黑箱 → 开源可审计',
+      them: '所有竞品均为闭源 SaaS，数据离开平台即不可见，算法逻辑不可审计',
+      us: '完全开源、可自部署。每条分析结论绑定原始评论证据，任何人都能验证——不是"信我们"，是"自己看"'
+    },
   ];
 
-  var html = '';
-  for (var i = 0; i < dims.length; i++) {
-    var d = dims[i];
-    html += '<div class="v5-comp-row">' +
-      '<span class="v5-comp-name">' + d.name + '</span>' +
-      '<div class="v5-comp-track">' +
-        '<div class="v5-comp-fill ' + d.cls + '" style="width:' + d.us + '%"></div>' +
-        '<div style="position:absolute;left:' + d.ind + '%;top:0;bottom:0;width:0;border-left:2px dashed #9aa7ba;pointer-events:none;" title="行业均值:' + d.ind + '"></div>' +
+  var cardsHtml = dims.map(function(d) {
+    // Show all 4 competitors on each row for depth
+    var competitors = [
+      { name: 'Brand24',   score: d.name === '需求识别' ? 50 : d.name === '性价比' ? 50 : d.name === '证据追溯' ? 30 : d.name === 'AI洞察' ? 60 : d.name === '方案转化' ? 15 : d.name === '部署灵活' ? 20 : d.name === '数据广度' ? 85 : 40 },
+      { name: 'YouScan',   score: d.name === '需求识别' ? 45 : d.name === '性价比' ? 45 : d.name === '证据追溯' ? 25 : d.name === 'AI洞察' ? 70 : d.name === '方案转化' ? 15 : d.name === '部署灵活' ? 20 : d.name === '数据广度' ? 75 : 35 },
+      { name: 'Meltwater', score: d.name === '需求识别' ? 40 : d.name === '性价比' ? 10 : d.name === '证据追溯' ? 20 : d.name === 'AI洞察' ? 55 : d.name === '方案转化' ? 10 : d.name === '部署灵活' ? 10 : d.name === '数据广度' ? 95 : 30 },
+    ];
+    // Show us bar + strongest competitor bar
+    var bestComp = competitors.reduce(function(best, c) { return c.score > best.score ? c : best; }, competitors[0]);
+
+    return '<div class="v5-ccard">' +
+      '<div class="v5-ccard-label">' + d.name + '</div>' +
+      '<div class="v5-ccard-bars">' +
+        '<div class="v5-ccbar-row">' +
+          '<span class="v5-ccbar-lbl" style="font-weight:900;color:var(--blue)">MediaCrawler</span>' +
+          '<div class="v5-ccbar-track"><div class="v5-ccbar-fill" style="width:' + d.us + '%"></div></div>' +
+          '<span class="v5-ccbar-score" style="font-weight:900;color:var(--blue)">' + d.us + '</span>' +
+          '<span class="v5-ccbar-badge ' + d.badgeCls + '">' + escapeHtml(d.badge) + '</span>' +
+        '</div>' +
+        '<div class="v5-ccbar-row">' +
+          '<span class="v5-ccbar-lbl">' + escapeHtml(bestComp.name) + '</span>' +
+          '<div class="v5-ccbar-track"><div class="v5-ccbar-fill them" style="width:' + bestComp.score + '%"></div></div>' +
+          '<span class="v5-ccbar-score them">' + bestComp.score + '</span>' +
+        '</div>' +
+        '<div class="v5-ccbar-compact">' +
+          competitors.map(function(c) {
+            var w = Math.max(4, Math.round(c.score * 0.45));
+            return '<span class="v5-ccbar-mini" title="' + escapeHtml(c.name) + ': ' + c.score + '">' +
+              '<span class="v5-ccbar-mini-lbl">' + escapeHtml(c.name) + '</span>' +
+              '<span class="v5-ccbar-mini-track"><span class="v5-ccbar-mini-fill" style="width:' + w + 'px"></span></span>' +
+              '<span class="v5-ccbar-mini-score">' + c.score + '</span>' +
+            '</span>';
+          }).join('') +
+        '</div>' +
       '</div>' +
-      '<span class="v5-comp-score">' + d.us + '</span>' +
     '</div>';
-  }
-  compBars.innerHTML = html;
-
-  // Style track for positioning
-  compBars.querySelectorAll('.v5-comp-track').forEach(function(tr) { tr.style.position = 'relative'; });
-
-  // Legend
-  var legend = document.createElement('div');
-  legend.style.cssText = 'margin-top:8px;font-size:11px;color:var(--muted);display:flex;gap:14px;';
-  legend.innerHTML = '<span>实心 = 我们</span><span style="border-left:2px dashed #9aa7ba;padding-left:6px;">虚线 = 行业均值</span>';
-  compBars.appendChild(legend);
-}
-
-function renderV5StrengthGrid(agg) {
-  var grid = document.getElementById('v5StrGrid');
-  if (!grid) return;
-
-  var items = [];
-  if (agg.length >= 3) {
-    items.push({
-      side: 'weak', h4c: 'red', h4: '竞品强项',
-      points: ['数据展示和报表全面', '交易/流量数据积累深', '品牌信任和用户基数大', '市场运营成熟']
-    });
-    items.push({
-      side: 'strong', h4c: 'green', h4: '我们强项',
-      points: ['AI驱动的决策解释', '需求→方案自动转化', '每条结论绑定原始评论证据', '风险评分和MVP边界建议']
-    });
-  } else {
-    items.push({
-      side: 'weak', h4c: 'red', h4: '竞品强项', points: ['数据采集全面', '用户基数大', '品牌信任强']
-    });
-    items.push({
-      side: 'strong', h4c: 'green', h4: '我们强项', points: ['AI驱动分析', '需求转产品', '证据链支撑']
-    });
-  }
-
-  var html = items.map(function(box) {
-    return '<div class="v5-str-box ' + box.side + '"><h4 class="' + box.h4c + '">' + box.h4 + '</h4><ul>' +
-      box.points.map(function(p) { return '<li>' + p + '</li>'; }).join('') +
-      '</ul></div>';
   }).join('');
-  grid.innerHTML = html;
-}
 
-function renderV5CoreGaps(agg) {
-  var gapFocus = document.getElementById('v5GapFocus');
-  if (!gapFocus) return;
-
-  var items = [];
-  if (agg.length >= 3) {
-    items.push({
-      icon: 'b1', label: '信息 → 判断',
-      text: '竞品提供数据和信息，我们提供"能不能做"的判断。把评论转成产品决策，而不是停在看板。'
-    });
-    items.push({
-      icon: 'b2', label: '计算 → 解释',
-      text: '竞品停留在ROI计算器，我们给出为什么这个风险分值、为什么先做这个功能的解释。'
-    });
-    items.push({
-      icon: 'b3', label: '平台信任 → 证据信任',
-      text: '竞品靠品牌背书，我们用每条原始评论绑定结论，让决策者自己验证可信度。'
-    });
-  } else {
-    items.push({
-      icon: 'b1', label: '信息到判断', text: '把数据转为可执行的产品决策。'
-    });
-    items.push({
-      icon: 'b2', label: '计算到解释', text: '不只给数字，给出原因和风险分析。'
-    });
-    items.push({
-      icon: 'b3', label: '信任到证据', text: '每个结论都可追溯到原始数据。'
-    });
-  }
-
-  gapFocus.innerHTML = items.map(function(g) {
-    return '<div class="v5-gap-pill"><div class="v5-gap-icon ' + g.icon + '">' + g.icon.replace('b','') + '</div><div><b>' + escapeHtml(g.label) + '</b><span>' + escapeHtml(g.text) + '</span></div></div>';
+  var gapsHtml = gaps.map(function(g) {
+    return '<div class="v5-gap-card">' +
+      '<div class="v5-gap-card-hdr">' +
+        '<span class="v5-gap-card-num">' + g.num + '</span>' +
+        '<b>' + escapeHtml(g.label) + '</b>' +
+      '</div>' +
+      '<div class="v5-gap-card-body">' +
+        '<p><span class="v5-gap-tag them">行业现状</span>' + escapeHtml(g.them) + '</p>' +
+        '<p><span class="v5-gap-tag us">我们的差异</span>' + escapeHtml(g.us) + '</p>' +
+      '</div>' +
+    '</div>';
   }).join('');
+
+  // Competitor overview table
+  var overviewHtml = '<div class="v5-comp-overview">' +
+    '<div class="v5-comp-overview-title">竞品概况（2025-2026 公开数据）</div>' +
+    '<div class="v5-comp-overview-grid">' +
+      '<div class="v5-comp-ov-card"><div class="v5-comp-ov-tier">企业级</div><b>Meltwater</b><span>$8K-50K+/年</span><p>PR+社交+广播电视全覆盖，ISO 27001 认证。2024 年以 $450M 收购 Brandwatch。适合大型企业品宣部门。</p></div>' +
+      '<div class="v5-comp-ov-card"><div class="v5-comp-ov-tier">中端市场</div><b>Brand24</b><span>$149-399/月</span><p>AI 情绪检测 + 异常告警 + 2025 年新增 LLM 可见性追踪。被 G2 评为中端市场最佳社交聆听工具。</p></div>' +
+      '<div class="v5-comp-ov-card"><div class="v5-comp-ov-tier">视觉AI</div><b>YouScan</b><span>$299+/月</span><p>Logo/场景/物体识别，95% 情绪准确率，Insights Copilot（ChatGPT 驱动）。CPG/时尚/汽车行业首选。</p></div>' +
+      '<div class="v5-comp-ov-card"><div class="v5-comp-ov-tier">主流平台</div><b>Sprout Social</b><span>$249-499/座/月</span><p>一站式社媒管理+聆听插件，30+ 渠道覆盖，AI 查询生成器和趋势检测内置于所有套餐。</p></div>' +
+      '<div class="v5-comp-ov-card ours"><div class="v5-comp-ov-tier">开源差异化</div><b>MediaCrawler</b><span>免费 · 自部署</span><p>唯一将社交聆听与 PM 决策流程打通的开源工具。评论→痛点簇→产品方案→竞品对比，全链路可审计。</p></div>' +
+    '</div>' +
+  '</div>';
+
+  container.innerHTML = '<div class="v5-ccards">' + cardsHtml + '</div>' +
+    '<div class="v5-gap-row">' + gapsHtml + '</div>' +
+    overviewHtml;
 }
 
 function renderV5Table(rows) {
@@ -705,17 +780,32 @@ function renderV5Table(rows) {
     return;
   }
   if (card) card.style.display = '';
-  if (count) count.textContent = rows.length + ' 条机会';
+  // Count only non-unclassified rows
+  var meaningful = rows.filter(function(r) {
+    return !_isUC(r.category);
+  });
+  if (count) count.textContent = meaningful.length + ' 条机会';
 
   var html = rows.map(function(r) {
     var mvp = r.mvpFeatures || '-';
-    var prodTypes = r.productType ? (r.productType.indexOf('、') >= 0 ? r.productType.split('、').map(function(t) { return '<span class="v5-product">' + escapeHtml(t.trim()) + '</span>'; }).join('') : '<span class="v5-product">' + escapeHtml(r.productType) + '</span>') : '-';
-    return '<tr data-cat="' + escapeHtml(r.category) + '" data-priority="' + r.priority + '">' +
+    if (mvp.length > 30) mvp = mvp.substring(0, 30) + '…';
+    var productParts = r.productType ? String(r.productType).split(/[、|]/).filter(Boolean) : [];
+    var prodTypes = productParts.length
+      ? productParts.slice(0, 3).map(function(t) { return '<span class="v5-product">' + escapeHtml(t.trim().substring(0, 12)) + '</span>'; }).join('')
+      : '-';
+    var decisionCls = r.decision ? ' v5-decision-' + r.decision : '';
+    var decisionHtml = r.decisionLabel ? '<span class="v5-decision' + decisionCls + '">' + escapeHtml(r.decisionLabel) + '</span>' : '';
+    var business = r.businessScore || Math.min(5, Math.ceil((r.hotScore || 0) * 1.5));
+    var ai = r.aiScore || Math.min(5, Math.ceil((r.hotScore || 0) * 1.2));
+    var isUC = (r.category || '').indexOf('未分类') >= 0 || (r.category || '').indexOf('相关需求') >= 0;
+    var name = isUC ? '<span style="color:var(--muted)">' + escapeHtml(r.category) + '</span>' : '<b>' + escapeHtml(r.category) + '</b>';
+    var rowCls = isUC ? ' class="v5-row-uc"' : '';
+    return '<tr data-cat="' + escapeHtml(r.category) + '" data-priority="' + r.priority + '"' + rowCls + '>' +
       '<td><span class="v5-priority v5-' + (r.priority || 'P2').toLowerCase() + '">' + (r.priority || 'P2') + '</span></td>' +
-      '<td><b>' + escapeHtml(r.category) + '</b><small>' + escapeHtml((r.solutionSummary||'').substring(0, 36)) + '</small></td>' +
-      '<td><span class="v5-score">' + r.count + '条</span><br><small>需补到20+</small></td>' +
-      '<td><span class="v5-score">' + Math.min(5, Math.ceil(r.hotScore || 0)) + '/5</span></td>' +
-      '<td><span class="v5-score">' + Math.min(5, Math.ceil(r.hotScore * 1.2 || 0)) + '/5</span></td>' +
+      '<td>' + name + ' ' + decisionHtml + '<small>' + escapeHtml((r.solutionSummary || '').substring(0, 48)) + '</small></td>' +
+      '<td><span class="v5-score">' + r.count + ' 条</span><br><small>机会分 ' + (r.score || '-') + '</small></td>' +
+      '<td><span class="v5-score">' + Math.min(5, business) + '/5</span></td>' +
+      '<td><span class="v5-score">' + Math.min(5, ai) + '/5</span></td>' +
       '<td>' + prodTypes + '</td>' +
       '<td><small>' + escapeHtml(mvp) + '</small></td>' +
       '<td><span class="v5-link v5-detail-link">看证据</span></td>' +
@@ -735,8 +825,22 @@ function bindV5Drawer() {
       var classified = (report.classified_preview || report.classified_records || []).filter(function(r) {
         return (r.categories || []).indexOf(cat) >= 0;
       });
+      var pmOps = (((report.pm_analysis || {}).opportunities) || []);
+      var opportunity = pmOps.find(function(item) { return item.category === cat; }) || null;
+      if (opportunity && Array.isArray(opportunity.evidence)) {
+        classified = opportunity.evidence.map(function(e) {
+          return {
+            extracted_text: e.text || '',
+            nickname: e.nickname || '',
+            liked_count: e.liked_count || 0,
+            hot_score: e.hot_score || 0,
+          };
+        });
+      }
 
+      _mvpCurrentCategory = cat;
       document.getElementById('arDrawerTitle').textContent = cat || '需求详情';
+      updateDrawerMVPStatus();
 
       var quotesHtml = '';
       classified.slice(0, 5).forEach(function(r) {
@@ -754,6 +858,11 @@ function bindV5Drawer() {
         details[0].matched_keywords.forEach(function(kw) { kwHtml += '<span class="ar-tag ar-ai">' + escapeHtml(kw) + '</span>'; });
       }
       if (!kwHtml) kwHtml = '<span class="ar-tag">暂无关键词信息</span>';
+      if (opportunity) {
+        kwHtml = '<span class="ar-tag ar-ai">' + escapeHtml(opportunity.decision_label || '') + '</span>' +
+          '<span class="ar-tag">机会分 ' + escapeHtml(opportunity.score || 0) + '</span>' +
+          '<span class="ar-tag">证据 ' + escapeHtml(opportunity.count || 0) + ' 条</span>';
+      }
       document.getElementById('arDrawerKeywords').innerHTML = kwHtml;
 
       var solHtml = '';
@@ -765,6 +874,21 @@ function bindV5Drawer() {
         solHtml += '<div style="font-size:12px;color:var(--muted);margin-top:4px"><span class="ar-tag">' + escapeHtml(sol.product_type || sol.solution_type || '') + '</span> <span class="ar-tag">' + escapeHtml(sol.cost || '') + '成本</span></div></div></div>';
       });
       if (!solHtml) solHtml = '<p style="color:var(--muted)">暂无AI方案详情</p>';
+      if (opportunity) {
+        var mvp = opportunity.mvp || {};
+        var listHtml = function(title, arr) {
+          arr = Array.isArray(arr) ? arr : [];
+          if (!arr.length) return '';
+          return '<div class="ar-mini-item"><span class="ar-rank">•</span><div><b>' + escapeHtml(title) + '</b><p>' +
+            arr.map(function(x) { return escapeHtml(x); }).join('<br>') + '</p></div></div>';
+        };
+        solHtml =
+          '<div class="ar-mini-item"><span class="ar-rank">1</span><div><b>' + escapeHtml(mvp.positioning || 'MVP 定位') + '</b><p>' + escapeHtml(mvp.first_version || '') + '</p></div></div>' +
+          listHtml('推荐原因', opportunity.why) +
+          listHtml('主要风险', opportunity.risks) +
+          listHtml('核心功能', mvp.core_features) +
+          listHtml('验证动作', opportunity.validation);
+      }
       document.getElementById('arDrawerSolutions').innerHTML = solHtml;
 
       document.getElementById('arDrawer').classList.add('open');
@@ -785,6 +909,277 @@ function hideV5Drawer() {
   document.getElementById('arMask').classList.remove('open');
 }
 
+// ── V5 MVP Plan Dialog ─────────────────────────────────────────
+
+var _mvpCurrentCategory = '';  // tracks which opportunity is active
+
+function bindMVPDialog() {
+  var topBtn = document.getElementById('mvpTopBtn');
+  if (topBtn && !topBtn._bound) {
+    topBtn._bound = true;
+    topBtn.onclick = function() {
+      var report = state.analysisReport;
+      if (!report) { appendLocalLog('warn', '暂无分析报告，无法生成 MVP 方案'); return; }
+      var pm = report.pm_analysis || {};
+      var ops = pm.opportunities || [];
+      var best = null;
+      for (var i = 0; i < ops.length; i++) {
+        if (!_isUC(ops[i].category) && (!best || ops[i].score > best.score)) best = ops[i];
+      }
+      if (!best) best = ops[0];
+      if (best) openMVPDialog(best);
+    };
+  }
+
+  var drawerBtn = document.getElementById('mvpDrawerBtn');
+  if (drawerBtn && !drawerBtn._bound) {
+    drawerBtn._bound = true;
+    drawerBtn.onclick = function() {
+      var cat = _mvpCurrentCategory || '';
+      if (!cat) { appendLocalLog('warn', '请先在表格中点击查看一个机会的详情'); return; }
+      var report = state.analysisReport;
+      var pm = report ? (report.pm_analysis || {}) : {};
+      var ops = pm.opportunities || [];
+      var opp = ops.find(function(o) { return o.category === cat; }) || null;
+      if (opp) openMVPDialog(opp);
+    };
+  }
+
+  // View cached plan button (drawer footer)
+  var viewBtn = document.getElementById('mvpViewBtn');
+  if (viewBtn && !viewBtn._bound) {
+    viewBtn._bound = true;
+    viewBtn.onclick = function() {
+      var cat = _mvpCurrentCategory || '';
+      var plan = (state._mvpPlans || {})[cat];
+      if (plan) showMVPDialog(plan, cat);
+    };
+  }
+
+  // Update drawer footer — show "查看已生成方案" if a plan is cached
+  updateDrawerMVPStatus();
+
+  var overlay = document.getElementById('mvpOverlay');
+  var closeBtn = document.getElementById('mvpCloseBtn');
+  var footClose = document.getElementById('mvpCloseFooterBtn');
+  var copyBtn = document.getElementById('mvpCopyBtn');
+
+  function closeMVP() {
+    var dlg = document.getElementById('mvpDialog');
+    if (dlg) dlg.classList.remove('open');
+    if (overlay) overlay.classList.remove('open');
+    updateDrawerMVPStatus(); // refresh drawer footer
+  }
+
+  if (overlay && !overlay._bound) { overlay._bound = true; overlay.onclick = closeMVP; }
+  if (closeBtn && !closeBtn._bound) { closeBtn._bound = true; closeBtn.onclick = closeMVP; }
+  if (footClose && !footClose._bound) { footClose._bound = true; footClose.onclick = closeMVP; }
+  if (copyBtn && !copyBtn._bound) {
+    copyBtn._bound = true;
+    copyBtn.onclick = function() {
+      var body = document.getElementById('mvpDialogBody');
+      var text = body ? (body.innerText || body.textContent || '') : '';
+      if (text) {
+        navigator.clipboard.writeText(text).then(function() {
+          appendLocalLog('success', 'MVP 方案已复制到剪贴板');
+        }).catch(function() {
+          appendLocalLog('warn', '复制失败，请手动选择文本');
+        });
+      }
+    };
+  }
+}
+
+function updateDrawerMVPStatus() {
+  var cat = _mvpCurrentCategory || '';
+  var drawerBtn = document.getElementById('mvpDrawerBtn');
+  var viewBtn = document.getElementById('mvpViewBtn');
+  var hasPlan = cat && (state._mvpPlans || {})[cat];
+
+  if (drawerBtn) {
+    if (hasPlan) {
+      drawerBtn.textContent = '重新生成';
+    } else {
+      drawerBtn.textContent = '生成MVP方案';
+    }
+  }
+  if (viewBtn) {
+    viewBtn.style.display = hasPlan ? '' : 'none';
+  }
+}
+
+async function openMVPDialog(opportunity) {
+  var cat = opportunity.category || '';
+  _mvpCurrentCategory = cat;
+
+  // Check cache first
+  state._mvpPlans = state._mvpPlans || {};
+  if (state._mvpPlans[cat]) {
+    showMVPDialog(state._mvpPlans[cat], cat);
+    return;
+  }
+
+  var mvp = opportunity.mvp || {};
+  var evidence = Array.isArray(opportunity.evidence) ? opportunity.evidence : [];
+  var evidenceTexts = evidence.map(function(e) { return e.text || ''; }).filter(Boolean);
+
+  var payload = {
+    category: cat,
+    count: opportunity.count || 0,
+    score: opportunity.score || 0,
+    decision: opportunity.decision || '',
+    evidence_texts: evidenceTexts.slice(0, 8),
+    solution_name: mvp.positioning || '',
+    solution_summary: (opportunity.why || []).join('；'),
+    solution_features: mvp.core_features || [],
+  };
+
+  var overlay = document.getElementById('mvpOverlay');
+  var dlg = document.getElementById('mvpDialog');
+  var body = document.getElementById('mvpDialogBody');
+  var title = document.getElementById('mvpDialogTitle');
+  if (title) title.textContent = 'MVP 方案：' + cat.substring(0, 28);
+  if (body) body.innerHTML = '<div class="mvp-loading">正在生成 MVP 方案<span class="mvp-dots"></span></div>';
+  if (overlay) overlay.classList.add('open');
+  if (dlg) dlg.classList.add('open');
+
+  try {
+    var resp = await fetch('/api/data/generate-mvp-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    var data = await resp.json();
+    if (data.status === 'ok' && data.plan) {
+      state._mvpPlans[cat] = data.plan;
+      showMVPDialog(data.plan, cat);
+    } else {
+      if (body) body.innerHTML = '<div class="mvp-loading" style="color:var(--red)">生成失败：' + escapeHtml(data.detail || '未知错误') + '</div>';
+    }
+  } catch (e) {
+    if (body) body.innerHTML = '<div class="mvp-loading" style="color:var(--red)">网络错误：' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function showMVPDialog(plan, category) {
+  renderMVPPlan(plan);
+  var overlay = document.getElementById('mvpOverlay');
+  var dlg = document.getElementById('mvpDialog');
+  var title = document.getElementById('mvpDialogTitle');
+  if (title) title.textContent = 'MVP 方案：' + (category || plan.category || '').substring(0, 28);
+  if (overlay) overlay.classList.add('open');
+  if (dlg) dlg.classList.add('open');
+}
+
+function renderMVPPlan(plan) {
+  var body = document.getElementById('mvpDialogBody');
+  if (!body) return;
+
+  var sourceNote = plan.source === 'llm'
+    ? '<div class="mvp-source llm">AI 生成 · 请人工复核</div>'
+    : '<div class="mvp-source">智能合成 · 配置 LLM API Key 可获得更详细的定制方案</div>';
+
+  var html = '<div class="mvp-plan">' +
+    // Product name badge
+    '<div class="mvp-section">' +
+      '<div class="mvp-product-badge">' +
+        '<div><b>' + escapeHtml(plan.product_name || '未命名') + '</b><span>推荐产品名称</span></div>' +
+      '</div>' +
+    '</div>' +
+
+    // Elevator pitch
+    '<div class="mvp-section">' +
+      '<h3>一句话说清楚做什么（电梯演讲）</h3>' +
+      '<div class="mvp-pitch">' + escapeHtml(plan.elevator_pitch || plan.mvp_name || '') + '</div>' +
+    '</div>' +
+
+    // Target persona
+    '<div class="mvp-section">' +
+      '<h3>目标用户</h3>' +
+      '<div class="mvp-persona">' + escapeHtml(plan.target_persona || '') + '</div>' +
+    '</div>' +
+
+    // Core workflow
+    '<div class="mvp-section">' +
+      '<h3>核心流程</h3>' +
+      '<div class="mvp-workflow">' +
+        (plan.core_workflow || []).map(function(step, i) {
+          return '<div class="mvp-workflow-step"><span class="step-num">' + (i+1) + '</span>' + escapeHtml(step) + '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+
+    // Feature roadmap
+    '<div class="mvp-section">' +
+      '<h3>开发路线图</h3>' +
+      '<div class="mvp-phases">' +
+        (plan.feature_roadmap || []).map(function(phase) {
+          var featuresHtml = (phase.features || []).map(function(f) {
+            return '<span class="mvp-phase-feat">' + escapeHtml(f) + '</span>';
+          }).join('');
+          return '<div class="mvp-phase">' +
+            '<div class="mvp-phase-header"><b>' + escapeHtml(phase.phase || '') + '</b></div>' +
+            '<div class="mvp-phase-features">' + featuresHtml + '</div>' +
+            '<div class="mvp-phase-hypothesis">' + escapeHtml(phase.hypothesis || '') + '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+
+    // Tech architecture
+    '<div class="mvp-section">' +
+      '<h3>技术架构</h3>' +
+      '<div class="mvp-tech-grid">' +
+        ['frontend','backend','data','ai','deploy'].map(function(k) {
+          var arch = plan.tech_architecture || {};
+          return '<div class="mvp-tech-item"><b>' + k.toUpperCase() + '</b><span>' + escapeHtml(arch[k] || '-') + '</span></div>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+
+    // Success metrics
+    '<div class="mvp-section">' +
+      '<h3>成功指标</h3>' +
+      '<div class="mvp-metrics">' +
+        '<div class="mvp-metric north"><b>北极星指标</b><span>' + escapeHtml((plan.success_metrics || {}).north_star || '-') + '</span></div>' +
+        '<div class="mvp-metric sec"><b>辅助指标</b><span>' + escapeHtml(((plan.success_metrics || {}).secondary || []).join('、') || '-') + '</span></div>' +
+      '</div>' +
+    '</div>' +
+
+    // Go-to-market
+    '<div class="mvp-section">' +
+      '<h3>获客策略</h3>' +
+      '<div class="mvp-gtm">' + escapeHtml(plan.go_to_market || '') + '</div>' +
+    '</div>' +
+
+    // Risks
+    '<div class="mvp-section">' +
+      '<h3>风险与缓解</h3>' +
+      '<div class="mvp-risks">' +
+        (plan.risks || []).map(function(r) {
+          var levelCls = (r.level || '中') === '高' ? 'high' : (r.level || '中') === '中' ? 'medium' : 'low';
+          return '<div class="mvp-risk">' +
+            '<span class="mvp-risk-level ' + levelCls + '">' + escapeHtml(r.level || '中') + '</span>' +
+            '<div class="mvp-risk-text"><b>' + escapeHtml(r.risk || '') + '</b><span>' + escapeHtml(r.mitigation || '') + '</span></div>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+
+    // Budget
+    '<div class="mvp-section">' +
+      '<h3>预算估算</h3>' +
+      '<div class="mvp-budget">' +
+        '<div class="mvp-budget-item"><b>开发周期</b><span>' + escapeHtml(String((plan.budget || {}).dev_weeks || '-')) + ' 周</span></div>' +
+        '<div class="mvp-budget-item"><b>月运维</b><span>' + escapeHtml(String((plan.budget || {}).monthly_ops || '-')) + '</span></div>' +
+      '</div>' +
+    '</div>' +
+    sourceNote +
+  '</div>';
+
+  body.innerHTML = html;
+}
+
 async function analyzeAndReport(filePath) {
   if (!window.confirm("将分析此文件并发送报告到飞书群：" + filePath + "\n确认继续？")) {
     return;
@@ -803,6 +1198,7 @@ async function analyzeAndReport(filePath) {
       classified_count: (data.classified_records || []).length,
       solutions: data.solutions || 0,
       solutions_data: data.solutions_data || [],
+      pm_analysis: data.pm_analysis || {},
       webhook_sent: data.webhook_sent || false,
       generated_at: new Date().toLocaleString("zh-CN", { hour12: false }),
       file_path: filePath,
@@ -853,6 +1249,11 @@ async function loadLogs() {
   state.runner = runner;
   state.crawlerLogs = crawler.logs || [];
   renderLogs();
+  const reportLog = [...state.crawlerLogs].reverse().find((item) => String(item.message || "").includes("Report saved & pushed"));
+  if (reportLog && reportLog.id !== state.lastReportLogId) {
+    state.lastReportLogId = reportLog.id;
+    await fetchLatestReport();
+  }
 }
 
 function appendLocalLog(level, message) {

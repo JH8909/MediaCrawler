@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MediaCrawler 控制台</title>
-    <link rel="stylesheet" href="/static/dashboard.css?v=20260628-20" />
+    <link rel="stylesheet" href="/static/dashboard.css?v=20260629-34" />
   </head>
   <body>
     <div class="app-shell">
@@ -421,7 +421,7 @@
             <div class="v5-actions">
               <button class="v5-btn light">重新分析</button>
               <button class="v5-btn">导出报告</button>
-              <button class="v5-btn primary">生成MVP方案</button>
+              <button class="v5-btn primary" id="mvpTopBtn">生成MVP方案</button>
             </div>
 
             <!-- Main 3-col grid -->
@@ -446,7 +446,7 @@
                 <div class="v5-panel">
                   <div class="v5-panel-head"><h2>需求转产品漏斗</h2><span>从数据到机会</span></div>
                   <div class="v5-funnel" id="v5Funnel"></div>
-                  <div class="v5-panel-head" style="margin-top:2px"><h2>高频痛点排行</h2><span>用户最集中说什么</span></div>
+                  <div class="v5-panel-head" style="margin-top:2px"><h2>高频痛点排行</h2><span id="v5BarsSubtitle">用户最集中说什么</span></div>
                   <div class="v5-bars" id="v5Bars"></div>
                 </div>
               </div>
@@ -478,40 +478,22 @@
             <div class="v5-insight-row" id="v5InsightRow" style="display:none">
               <div class="v5-insight-card v5-comp-full">
                 <h2>竞品分析</h2>
-                <div class="v5-comp-row-layout">
-
-                  <!-- 1. 功能热力图 -->
-                  <div class="v5-comp-section">
-                    <div class="v5-radar-title"><b>功能热力图</b><span>0-5 分，颜色越深能力越强</span></div>
-                    <div class="v5-heatmap-wrap"><table class="v5-heatmap" id="v5Heatmap"></table></div>
-                  </div>
-
-                  <!-- 2. 能力条形图 -->
-                  <div class="v5-comp-section">
-                    <div class="v5-radar-title"><b>能力对比条形图</b><span>我们 vs 竞品，突出决策优势</span></div>
-                    <div class="v5-comp-bars" id="v5CompBars"></div>
-                  </div>
-
-                  <!-- 3. 竞品强项 vs 我们强项 -->
-                  <div class="v5-comp-section">
-                    <div class="v5-str-grid" id="v5StrGrid"></div>
-                  </div>
-
-                  <!-- 4. 3个核心缺口 -->
-                  <div class="v5-comp-section">
-                    <div class="v5-radar-title"><b>3个核心缺口</b><span>我们的差异化切入点</span></div>
-                    <div class="v5-gap-focus" id="v5GapFocus"></div>
-                  </div>
-                </div>
+                <div id="v5CompCards"></div>
               </div>
             </div>
           </div>
 
           <!-- Empty state -->
           <div class="v5-empty" id="v5Empty">
+            <div class="v5-empty-icon">📊</div>
             <h3>暂无分析报告</h3>
-            <p>请先在"需求库"导入评论/关键词数据，或在"数据采集"页面新建任务。系统将自动生成痛点分类和 AI 产品方案。</p>
-            <button id="v5GoDataBtn">前往需求库</button>
+            <p>完成数据采集后，系统会自动进行需求分类、AI方案生成和竞品分析，全部展示在这里。</p>
+            <div class="v5-empty-steps">
+              <div><span>1</span> 在首页选择平台和关键词，启动采集</div>
+              <div><span>2</span> 采集完成后系统自动分析并保存报告</div>
+              <div><span>3</span> 回到本页查看完整的需求机会报告</div>
+            </div>
+            <button id="v5GoDataBtn" class="v5-btn primary">前往需求库 →</button>
           </div>
         </div>
 
@@ -524,8 +506,24 @@
             <div class="ar-detail-section"><h4>匹配关键词</h4><div class="ar-tag-row" id="arDrawerKeywords"></div></div>
             <div class="ar-detail-section"><h4>AI方案详情</h4><div id="arDrawerSolutions"></div></div>
           </div>
-          <div class="ar-drawer-footer"><button class="v5-btn" id="arCloseDrawerBtn">关闭</button><button class="v5-btn primary">生成MVP方案</button></div>
+          <div class="ar-drawer-footer"><button class="v5-btn light" id="mvpViewBtn" style="display:none">查看已生成方案</button><span style="flex:1"></span><button class="v5-btn" id="arCloseDrawerBtn">关闭</button><button class="v5-btn primary" id="mvpDrawerBtn">生成MVP方案</button></div>
         </aside>
+
+        <!-- MVP Plan Dialog -->
+        <div class="mvp-overlay" id="mvpOverlay"></div>
+        <dialog class="mvp-dialog" id="mvpDialog">
+          <div class="mvp-dialog-header">
+            <h2 id="mvpDialogTitle">生成 MVP 方案</h2>
+            <button class="mvp-close" id="mvpCloseBtn">&times;</button>
+          </div>
+          <div class="mvp-dialog-body" id="mvpDialogBody">
+            <div class="mvp-loading">正在生成 MVP 方案<span class="mvp-dots">...</span></div>
+          </div>
+          <div class="mvp-dialog-footer">
+            <button class="v5-btn" id="mvpCopyBtn">📋 复制方案</button>
+            <button class="v5-btn light" id="mvpCloseFooterBtn">关闭</button>
+          </div>
+        </dialog>
 
       </main>
     </div>
@@ -587,7 +585,7 @@
       </form>
     </dialog>
 
-    <script src="/static/dashboard.js?v=20260628-29"></script>
+    <script src="/static/dashboard.js?v=20260629-34"></script>
 
     <dialog id="solutionDialog" class="solution-dialog">
       <div class="panel-head solution-dialog-head">
